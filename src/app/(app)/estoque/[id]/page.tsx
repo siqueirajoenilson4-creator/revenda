@@ -47,6 +47,11 @@ export default async function DetalheItem({ params }: PageProps<"/estoque/[id]">
 
       <div className="mb-4">
         <ItemAcoes item={resumoAcoes(i)} hoje={hoje} noDetalhe />
+        {i.situacao !== "vendido" && (
+          <Link href={`/assistente?anuncio=${i.id}`} className="botao-pequeno mt-2">
+            Escrever anúncio com o assistente
+          </Link>
+        )}
       </div>
 
       <section className="mb-4">

@@ -3,6 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { sair } from "@/app/acoes";
+import { CHAVE_CONVERSA } from "@/lib/assistente";
+
+/** A conversa do assistente tem números do negócio: não fica no aparelho depois de sair. */
+function esquecerConversa() {
+  try {
+    localStorage.removeItem(CHAVE_CONVERSA);
+  } catch {
+    // navegador sem armazenamento
+  }
+}
 
 // Ícones no traço do Lucide (24×24, stroke 2).
 const ABAS = [
@@ -37,6 +47,11 @@ const ABAS = [
         <path d="M8 6h8M16 14v4M16 10h.01M12 10h.01M8 10h.01M12 14h.01M8 14h.01M12 18h.01M8 18h.01" />
       </>
     ),
+  },
+  {
+    href: "/assistente",
+    rotulo: "Assistente",
+    icone: <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22ZM8 12h.01M12 12h.01M16 12h.01" />,
   },
   {
     href: "/regras",
@@ -88,14 +103,14 @@ export function Nav({ email }: { email: string }) {
         </nav>
         <div className="mt-auto border-t border-white/10 px-2 pt-4 text-xs text-lateral-texto">
           <div className="truncate" title={email}>{email}</div>
-          <form action={sair}>
+          <form action={sair} onSubmit={esquecerConversa}>
             <button className="mt-1 font-medium text-slate-300 hover:text-white">Sair</button>
           </form>
         </div>
       </aside>
 
       {/* Celular: abas fixas embaixo */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-borda bg-superficie/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-borda bg-superficie/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {ABAS.map((a) => (
           <Link
             key={a.href}
