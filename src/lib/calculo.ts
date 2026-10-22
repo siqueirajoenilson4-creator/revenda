@@ -10,6 +10,7 @@ export type Regras = {
   saldo_inicial: number;
   reserva_pct: number;
   max_item_pct: number;
+  meta_lucro_mes: number;
 };
 
 export const REGRAS_PADRAO: Regras = {
@@ -21,6 +22,7 @@ export const REGRAS_PADRAO: Regras = {
   saldo_inicial: 0,
   reserva_pct: 20,
   max_item_pct: 30,
+  meta_lucro_mes: 200000,
 };
 
 export type Simulacao = {

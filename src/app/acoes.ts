@@ -8,6 +8,9 @@ import { REGRAS_PADRAO, type Regras } from "@/lib/calculo";
 import { hoje, lerNumero, lerReais } from "@/lib/formato";
 import { lerImportacao } from "@/lib/backup";
 import { BUCKET_FOTOS } from "@/lib/supabase/config";
+import { ehCanal, ehEntregaVenda, ehPagamento } from "@/lib/vendas";
+import { ehCanalAnuncio, ehEntrega, ehEstado, ehSituacaoPublicacao, renovarEm } from "@/lib/anuncios";
+import { ehSituacaoContato, lerDataHora } from "@/lib/interessados";
 
 export type Resultado = { erro?: string; ok?: string } | undefined;
 
@@ -23,6 +26,8 @@ const data = (f: FormData, k: string) => {
 function atualizarTudo() {
   revalidatePath("/", "layout");
 }
+
+type Supabase = Awaited<ReturnType<typeof usuario>>["supabase"];
 
 // ---------- Login ----------
 
@@ -147,34 +152,140 @@ export async function anunciar(_: Resultado, f: FormData): Promise<Resultado> {
   const preco = lerReais(texto(f, "preco"));
   if (!id) return { erro: "Item não encontrado." };
   if (preco == null || preco <= 0) return { erro: "Qual o preço do anúncio?" };
-  const { error } = await supabase
+  const { data: it, error } = await supabase
     .from("itens")
     .update({ preco_alvo: preco, situacao: "anunciado" })
     .eq("id", id)
-    .neq("situacao", "vendido");
+    .neq("situacao", "vendido")
+    .select("nome, categoria")
+    .maybeSingle();
   if (error) return { erro: error.message };
+  if (!it) return { erro: "Este item já foi vendido." };
+  const erroPreco = await guardarPreco(supabase, id, preco, it);
+  if (erroPreco) return { erro: erroPreco };
   atualizarTudo();
   return { ok: "Marcado como anunciado." };
 }
 
+/**
+ * Preço novo do item: vai para o anúncio (criado se ainda não existe) e entra
+ * no histórico só quando muda. Devolve a mensagem de erro, se houver.
+ */
+async function guardarPreco(
+  supabase: Supabase,
+  itemId: string,
+  preco: number,
+  item: { nome: string; categoria: string | null },
+): Promise<string | null> {
+  const { data: atual } = await supabase.from("anuncios").select("id, preco").eq("item_id", itemId).maybeSingle();
+  const mudou = !atual || Number(atual.preco) !== preco;
+  let anuncioId = atual?.id as string | undefined;
+  if (!anuncioId) {
+    const { data: novo, error } = await supabase
+      .from("anuncios")
+      .insert({ item_id: itemId, titulo: item.nome, categoria: item.categoria, preco })
+      .select("id")
+      .single();
+    if (error) return error.message;
+    anuncioId = novo.id as string;
+  } else if (mudou) {
+    const { error } = await supabase.from("anuncios").update({ preco }).eq("id", anuncioId);
+    if (error) return error.message;
+  }
+  if (mudou) {
+    const { error } = await supabase.from("precos").insert({ anuncio_id: anuncioId, preco, data: hoje() });
+    if (error) return error.message;
+  }
+  return null;
+}
+
+/** Ao vender, os anúncios do item saem do ar na ferramenta; ao desfazer, voltam. */
+async function marcarPublicacoes(supabase: Supabase, itemId: string, de: string[], para: string) {
+  const { data: a } = await supabase.from("anuncios").select("id").eq("item_id", itemId).maybeSingle();
+  if (a) await supabase.from("publicacoes").update({ situacao: para }).eq("anuncio_id", a.id).in("situacao", de);
+}
+
+function detalhesVenda(f: FormData) {
+  const canal = texto(f, "canal");
+  const pagamento = texto(f, "pagamento");
+  const entrega = texto(f, "entrega");
+  return {
+    canal: ehCanal(canal) ? canal : null,
+    pagamento: ehPagamento(pagamento) ? pagamento : null,
+    comprador_nome: texto(f, "comprador_nome"),
+    comprador_contato: texto(f, "comprador_contato"),
+    cidade: texto(f, "cidade"),
+    entrega: ehEntregaVenda(entrega) ? entrega : null,
+    obs: texto(f, "obs"),
+  };
+}
+
+/**
+ * Registra a venda. Campos: id, valor, data e, opcionais, canal, pagamento,
+ * entrega, custo_entrega (vira gasto do item), comprador_nome,
+ * comprador_contato, cidade, obs e contato_id (o interessado que comprou).
+ */
 export async function vendi(_: Resultado, f: FormData): Promise<Resultado> {
   const { supabase } = await usuario();
   const id = texto(f, "id");
   const valor = lerReais(texto(f, "valor"));
-  if (!id) return { erro: "Item não encontrado." };
+  const custoEntrega = lerReais(texto(f, "custo_entrega")) ?? 0;
+  if (!id) return { erro: "Escolha o item vendido." };
   if (valor == null || valor <= 0) return { erro: "Por quanto vendeu?" };
-  const { error } = await supabase
+  if (custoEntrega < 0) return { erro: "Custo da entrega inválido." };
+  const dia = data(f, "data") ?? hoje();
+
+  const { data: vendido, error } = await supabase
     .from("itens")
-    .update({ situacao: "vendido", venda_valor: valor, venda_data: data(f, "data") ?? hoje() })
-    .eq("id", id);
+    .update({ situacao: "vendido", venda_valor: valor, venda_data: dia })
+    .eq("id", id)
+    .neq("situacao", "vendido")
+    .select("id")
+    .maybeSingle();
   if (error) return { erro: error.message };
+  if (!vendido) return { erro: "Este item já está vendido. Para mudar, desfaça a venda no item." };
+
+  let gastoEntrega: string | null = null;
+  if (custoEntrega > 0) {
+    const { data: g, error: eg } = await supabase
+      .from("gastos")
+      .insert({ item_id: id, descricao: "Entrega da venda", valor: custoEntrega, data: dia })
+      .select("id")
+      .single();
+    if (eg) return { erro: eg.message };
+    gastoEntrega = g.id;
+  }
+  const { error: ev } = await supabase
+    .from("vendas")
+    .upsert({ item_id: id, ...detalhesVenda(f), gasto_entrega_id: gastoEntrega });
+  if (ev) return { erro: ev.message };
+
+  await marcarPublicacoes(supabase, id, ["publicado", "pausado"], "vendido");
+  const contatoId = texto(f, "contato_id");
+  if (contatoId) {
+    await supabase.from("contatos").update({ situacao: "comprou", aguardando_desde: null }).eq("id", contatoId);
+  }
   atualizarTudo();
   return { ok: "Venda registrada." };
 }
 
+/** Canal, pagamento e comprador de uma venda já registrada (vendas antigas "Não informado"). */
+export async function salvarDetalhesVenda(_: Resultado, f: FormData): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const id = texto(f, "id");
+  if (!id) return { erro: "Item não encontrado." };
+  const { error } = await supabase.from("vendas").upsert({ item_id: id, ...detalhesVenda(f) });
+  if (error) return { erro: error.message };
+  atualizarTudo();
+  return { ok: "Venda atualizada." };
+}
+
 export async function desfazerVenda(id: string): Promise<Resultado> {
   const { supabase } = await usuario();
-  const { data: i } = await supabase.from("itens").select("preco_alvo").eq("id", id).single();
+  const [{ data: i }, { data: v }] = await Promise.all([
+    supabase.from("itens").select("preco_alvo").eq("id", id).single(),
+    supabase.from("vendas").select("gasto_entrega_id").eq("item_id", id).maybeSingle(),
+  ]);
   const { error } = await supabase
     .from("itens")
     .update({
@@ -184,6 +295,9 @@ export async function desfazerVenda(id: string): Promise<Resultado> {
     })
     .eq("id", id);
   if (error) return { erro: error.message };
+  if (v?.gasto_entrega_id) await supabase.from("gastos").delete().eq("id", v.gasto_entrega_id);
+  await supabase.from("vendas").delete().eq("item_id", id);
+  await marcarPublicacoes(supabase, id, ["vendido"], "publicado");
   atualizarTudo();
   return { ok: "Venda desfeita." };
 }
@@ -255,6 +369,252 @@ export async function tornarCapa(id: string): Promise<Resultado> {
   atualizarTudo();
 }
 
+/** Nova ordem das fotos (a primeira é a capa do anúncio). */
+export async function reordenarFotos(itemId: string, ids: string[]): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const { data: todas } = await supabase.from("fotos").select("id").eq("item_id", itemId);
+  const existentes = new Set((todas ?? []).map((t) => t.id as string));
+  if (ids.length !== existentes.size || !ids.every((x) => existentes.has(x))) {
+    return { erro: "As fotos mudaram. Recarregue a tela." };
+  }
+  const feitos = await Promise.all(ids.map((fid, i) => supabase.from("fotos").update({ ordem: i }).eq("id", fid)));
+  const falha = feitos.find((r) => r.error)?.error;
+  if (falha) return { erro: falha.message };
+  atualizarTudo();
+}
+
+// ---------- Anúncios (Facebook e OLX manuais por enquanto: ele publica e cola o link) ----------
+
+export async function salvarAnuncio(_: Resultado, f: FormData): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const itemId = texto(f, "item_id");
+  const titulo = texto(f, "titulo");
+  const preco = lerReais(texto(f, "preco"));
+  if (!itemId) return { erro: "Item não encontrado." };
+  if (!titulo) return { erro: "O anúncio precisa de um título." };
+  if (preco == null || preco <= 0) return { erro: "Qual o preço do anúncio?" };
+  const estado = texto(f, "estado_conservacao");
+  const entrega = texto(f, "entrega");
+
+  const { data: it } = await supabase.from("itens").select("nome, categoria, situacao").eq("id", itemId).single();
+  if (!it) return { erro: "Item não encontrado." };
+  const erroPreco = await guardarPreco(supabase, itemId, preco, it);
+  if (erroPreco) return { erro: erroPreco };
+
+  const { error } = await supabase
+    .from("anuncios")
+    .update({
+      titulo,
+      descricao: texto(f, "descricao") ?? "",
+      categoria: texto(f, "categoria"),
+      cidade: texto(f, "cidade"),
+      estado_conservacao: ehEstado(estado) ? estado : null,
+      aceita_troca: f.get("aceita_troca") === "on",
+      entrega: ehEntrega(entrega) ? entrega : null,
+    })
+    .eq("item_id", itemId);
+  if (error) return { erro: error.message };
+  if (it.situacao !== "vendido") await supabase.from("itens").update({ preco_alvo: preco }).eq("id", itemId);
+  atualizarTudo();
+  return { ok: "Anúncio salvo." };
+}
+
+/** Situação e link do anúncio num canal. Publicar marca a data e o dia de renovar. */
+export async function salvarPublicacao(_: Resultado, f: FormData): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const anuncioId = texto(f, "anuncio_id");
+  const canal = texto(f, "canal");
+  const situacao = texto(f, "situacao") ?? "publicado";
+  const link = texto(f, "link");
+  if (!anuncioId) return { erro: "Salve o anúncio antes." };
+  if (!ehCanalAnuncio(canal)) return { erro: "Canal inválido." };
+  if (!ehSituacaoPublicacao(situacao)) return { erro: "Situação inválida." };
+  if (link && !/^https?:\/\/\S+$/i.test(link)) return { erro: "Cole o link completo (começa com https://)." };
+
+  const [{ data: anuncio }, { data: atual }] = await Promise.all([
+    supabase.from("anuncios").select("item_id, preco").eq("id", anuncioId).single(),
+    supabase
+      .from("publicacoes")
+      .select("situacao, publicado_em, renovar_em")
+      .eq("anuncio_id", anuncioId)
+      .eq("canal", canal)
+      .maybeSingle(),
+  ]);
+  if (!anuncio) return { erro: "Anúncio não encontrado." };
+  const publicando = situacao === "publicado" && atual?.situacao !== "publicado";
+  const { error } = await supabase.from("publicacoes").upsert(
+    {
+      anuncio_id: anuncioId,
+      canal,
+      situacao,
+      link,
+      publicado_em: publicando ? new Date().toISOString() : (atual?.publicado_em ?? null),
+      renovar_em: publicando ? renovarEm(canal, hoje()) : situacao === "publicado" ? (atual?.renovar_em ?? null) : null,
+    },
+    { onConflict: "anuncio_id,canal" },
+  );
+  if (error) return { erro: error.message };
+  if (situacao === "publicado") {
+    await supabase
+      .from("itens")
+      .update({ situacao: "anunciado", preco_alvo: anuncio.preco })
+      .eq("id", anuncio.item_id)
+      .eq("situacao", "comprado");
+  }
+  atualizarTudo();
+  return { ok: publicando ? "Publicação registrada." : "Salvo." };
+}
+
+/** "Renovei": o anúncio voltou para o topo e o lembrete anda mais 7 dias. */
+export async function renovarPublicacao(id: string): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const { data: p } = await supabase.from("publicacoes").select("canal").eq("id", id).single();
+  if (!p || !ehCanalAnuncio(p.canal)) return { erro: "Publicação não encontrada." };
+  const { error } = await supabase
+    .from("publicacoes")
+    .update({ situacao: "publicado", publicado_em: new Date().toISOString(), renovar_em: renovarEm(p.canal, hoje()) })
+    .eq("id", id);
+  if (error) return { erro: error.message };
+  atualizarTudo();
+  return { ok: "Renovado." };
+}
+
+export async function apagarPublicacao(id: string): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const { error } = await supabase.from("publicacoes").delete().eq("id", id);
+  if (error) return { erro: error.message };
+  atualizarTudo();
+  return { ok: "Canal removido." };
+}
+
+// ---------- Interessados ----------
+
+/** Criar (sem id) ou editar (com id). "aguardando" marcado = a pessoa está esperando resposta. */
+export async function salvarContato(_: Resultado, f: FormData): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const id = texto(f, "id");
+  const nome = texto(f, "nome");
+  const canal = texto(f, "canal");
+  const situacao = texto(f, "situacao") ?? "novo";
+  const oferta = lerReais(texto(f, "oferta"));
+  if (!nome) return { erro: "Qual o nome do interessado?" };
+  if (!ehCanal(canal)) return { erro: "Por onde ele chamou?" };
+  if (!ehSituacaoContato(situacao)) return { erro: "Situação inválida." };
+  if (oferta != null && oferta < 0) return { erro: "Oferta inválida." };
+  const retorno = texto(f, "retorno_em");
+  const retornoEm = lerDataHora(retorno);
+  if (retorno && !retornoEm) return { erro: "Data de retorno inválida." };
+
+  let aguardando: string | null = null;
+  if (f.get("aguardando") === "on" && situacao !== "comprou" && situacao !== "perdido") {
+    const { data: atual } = id
+      ? await supabase.from("contatos").select("aguardando_desde").eq("id", id).maybeSingle()
+      : { data: null };
+    aguardando = atual?.aguardando_desde ?? new Date().toISOString();
+  }
+  const linha = {
+    item_id: texto(f, "item_id"),
+    canal,
+    nome,
+    telefone: texto(f, "telefone"),
+    oferta,
+    situacao,
+    proximo_passo: texto(f, "proximo_passo"),
+    retorno_em: retornoEm,
+    aguardando_desde: aguardando,
+  };
+  const { error } = id
+    ? await supabase.from("contatos").update(linha).eq("id", id)
+    : await supabase.from("contatos").insert(linha);
+  if (error) return { erro: error.message };
+  atualizarTudo();
+  return { ok: id ? "Interessado atualizado." : "Interessado registrado." };
+}
+
+export async function mudarSituacaoContato(id: string, situacao: string): Promise<Resultado> {
+  const { supabase } = await usuario();
+  if (!ehSituacaoContato(situacao)) return { erro: "Situação inválida." };
+  const encerrado = situacao === "comprou" || situacao === "perdido";
+  const { error } = await supabase
+    .from("contatos")
+    .update(encerrado ? { situacao, aguardando_desde: null } : { situacao })
+    .eq("id", id);
+  if (error) return { erro: error.message };
+  atualizarTudo();
+}
+
+/** Anota uma mensagem. Entrada = ele mandou (fica esperando resposta); saída = você respondeu. */
+export async function registrarMensagem(_: Resultado, f: FormData): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const contatoId = texto(f, "contato_id");
+  const direcao = texto(f, "direcao") === "entrada" ? "entrada" : "saida";
+  const msg = texto(f, "texto");
+  if (!contatoId) return { erro: "Interessado não encontrado." };
+  if (!msg) return { erro: "Escreva a mensagem." };
+  const { data: c } = await supabase.from("contatos").select("aguardando_desde").eq("id", contatoId).single();
+  if (!c) return { erro: "Interessado não encontrado." };
+  const agora = new Date().toISOString();
+  const { error } = await supabase
+    .from("mensagens")
+    .insert({ contato_id: contatoId, direcao, texto: msg, enviada_em: agora });
+  if (error) return { erro: error.message };
+  await supabase
+    .from("contatos")
+    .update({ aguardando_desde: direcao === "entrada" ? (c.aguardando_desde ?? agora) : null })
+    .eq("id", contatoId);
+  atualizarTudo();
+  return { ok: "Anotado." };
+}
+
+/** Respondeu pelo app do canal: sai da lista de espera. */
+export async function marcarRespondido(id: string): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const { error } = await supabase.from("contatos").update({ aguardando_desde: null }).eq("id", id);
+  if (error) return { erro: error.message };
+  atualizarTudo();
+}
+
+export async function apagarContato(id: string): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const { error } = await supabase.from("contatos").delete().eq("id", id);
+  if (error) return { erro: error.message };
+  atualizarTudo();
+  return { ok: "Interessado apagado." };
+}
+
+// ---------- Respostas prontas ----------
+
+export async function salvarResposta(_: Resultado, f: FormData): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const id = texto(f, "id");
+  const titulo = texto(f, "titulo");
+  const corpo = texto(f, "texto");
+  if (!titulo || !corpo) return { erro: "Preencha o nome e o texto da resposta." };
+  if (id) {
+    const { error } = await supabase.from("respostas").update({ titulo, texto: corpo }).eq("id", id);
+    if (error) return { erro: error.message };
+  } else {
+    const { data: ultima } = await supabase
+      .from("respostas")
+      .select("ordem")
+      .order("ordem", { ascending: false })
+      .limit(1);
+    const { error } = await supabase
+      .from("respostas")
+      .insert({ titulo, texto: corpo, ordem: (ultima?.[0]?.ordem ?? -1) + 1 });
+    if (error) return { erro: error.message };
+  }
+  atualizarTudo();
+  return { ok: "Resposta salva." };
+}
+
+export async function apagarResposta(id: string): Promise<Resultado> {
+  const { supabase } = await usuario();
+  const { error } = await supabase.from("respostas").delete().eq("id", id);
+  if (error) return { erro: error.message };
+  atualizarTudo();
+}
+
 // ---------- Regras e backup ----------
 
 const ROTULOS: Record<keyof Regras, string> = {
@@ -266,12 +626,15 @@ const ROTULOS: Record<keyof Regras, string> = {
   saldo_inicial: "Saldo inicial",
   reserva_pct: "Reserva",
   max_item_pct: "Máximo num item",
+  meta_lucro_mes: "Meta de lucro do mês",
 };
 
+/** Salva só os campos que vieram no formulário; os outros ficam como estão. */
 export async function salvarRegras(_: Resultado, f: FormData): Promise<Resultado> {
   const { id, supabase } = await usuario();
-  const novas = { ...REGRAS_PADRAO };
+  const novas = { ...(await lerRegras()) };
   for (const k of Object.keys(REGRAS_PADRAO) as (keyof Regras)[]) {
+    if (!f.has(k)) continue;
     const bruto = texto(f, k);
     const v = k.endsWith("_pct") ? lerNumero(bruto) : lerReais(bruto);
     if (v == null) return { erro: `Preencha: ${ROTULOS[k]}.` };
@@ -301,7 +664,7 @@ export async function importar(_: Resultado, f: FormData): Promise<Resultado> {
   }
 
   let criados = 0;
-  for (const { gastos, ...item } of lido.itens) {
+  for (const { gastos, venda, anuncio, ...item } of lido.itens) {
     const { data: novo, error } = await supabase.from("itens").insert(item).select("id").single();
     if (error) return { erro: `Parei no item "${item.nome}": ${error.message}. ${criados} importados antes.` };
     if (gastos.length) {
@@ -309,6 +672,25 @@ export async function importar(_: Resultado, f: FormData): Promise<Resultado> {
         .from("gastos")
         .insert(gastos.map((g) => ({ ...g, item_id: novo.id })));
       if (eg) return { erro: `Gastos de "${item.nome}": ${eg.message}` };
+    }
+    if (venda) {
+      const { error: ev } = await supabase.from("vendas").insert({ ...venda, item_id: novo.id });
+      if (ev) return { erro: `Venda de "${item.nome}": ${ev.message}` };
+    }
+    if (anuncio) {
+      const { publicacoes, precos, ...dados } = anuncio;
+      const { data: a, error: ea } = await supabase
+        .from("anuncios")
+        .insert({ ...dados, item_id: novo.id })
+        .select("id")
+        .single();
+      if (ea) return { erro: `Anúncio de "${item.nome}": ${ea.message}` };
+      const filhos = await Promise.all([
+        publicacoes.length ? supabase.from("publicacoes").insert(publicacoes.map((p) => ({ ...p, anuncio_id: a.id }))) : null,
+        precos.length ? supabase.from("precos").insert(precos.map((p) => ({ ...p, anuncio_id: a.id }))) : null,
+      ]);
+      const ef = filhos.find((r) => r?.error)?.error;
+      if (ef) return { erro: `Anúncio de "${item.nome}": ${ef.message}` };
     }
     criados++;
   }

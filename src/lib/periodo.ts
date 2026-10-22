@@ -24,6 +24,19 @@ export function periodo(id: PeriodoId, hoje: string): { de: string | null; ate: 
   }
 }
 
+/** Soma (ou subtrai) dias a uma data AAAA-MM-DD. */
+export function somarDias(data: string, n: number): string {
+  const [y, m, d] = data.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** Segunda-feira de n semanas atrás (0 = semana atual). */
+export function inicioSemana(hoje: string, n = 0): string {
+  const [y, m, d] = hoje.split("-").map(Number);
+  const desdeSegunda = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+  return somarDias(hoje, -desdeSegunda - 7 * n);
+}
+
 /** Lista de meses AAAA-MM de `inicio` a `fim`, inclusive. */
 export function mesesEntre(inicio: string, fim: string): string[] {
   const lista: string[] = [];

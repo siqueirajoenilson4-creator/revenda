@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { CHAVE_CONVERSA as CHAVE, LIMITES, ROTULO_FERRAMENTA, type EventoChat, type Mensagem } from "@/lib/assistente";
+import { Icone } from "@/components/IconesItem";
 
 const HISTORICO = 20; // mensagens mandadas à IA a cada pergunta
 const INTERROMPIDA = "A resposta foi interrompida. Tente de novo.";
@@ -13,6 +15,29 @@ const SUGESTOES = [
   "Vale comprar uma bicicleta por R$ 250 para vender a R$ 500?",
   "Escreva o anúncio do item mais recente do estoque",
 ];
+
+// Ícones no traço do Lucide, como no menu.
+const SETA = <path d="M5 12h14M12 5l7 7-7 7" />;
+const ENVIAR = <path d="m5 12 7-7 7 7M12 19V5" />;
+const FEITO = <path d="M20 6 9 17l-5-5" />;
+const ALERTA = (
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 8v4M12 16h.01" />
+  </>
+);
+const COPIAR = (
+  <>
+    <rect x="8" y="8" width="14" height="14" rx="2" />
+    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+  </>
+);
+const NOVA = (
+  <>
+    <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3l-9 9a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85Z" />
+  </>
+);
 
 function lerSalvas(): Mensagem[] {
   try {
@@ -53,12 +78,32 @@ function Texto({ texto }: { texto: string }) {
   );
 }
 
+/** "Digitando": três pontos em sequência e o que a IA está consultando. */
+function Pensando({ rotulo, className = "" }: { rotulo: string; className?: string }) {
+  return (
+    <div role="status" className={`aparece flex min-h-11 items-center gap-3 text-[13px] text-suave ${className}`}>
+      <span className="flex items-center gap-1" aria-hidden>
+        {[0, 160, 320].map((atraso) => (
+          <span
+            key={atraso}
+            className="size-1.5 rounded-full bg-suave motion-safe:animate-[pulinho_1.2s_ease-in-out_infinite_both]"
+            style={{ animationDelay: `${atraso}ms` }}
+          />
+        ))}
+      </span>
+      {rotulo}
+    </div>
+  );
+}
+
 function Copiar({ texto }: { texto: string }) {
   const [ok, setOk] = useState(false);
   return (
     <button
       type="button"
-      className="botao-pequeno"
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-semibold transition-[background-color,color,scale] duration-150 hover:bg-superficie-2 active:scale-[0.96] md:min-h-9 ${
+        ok ? "text-bom" : "text-suave hover:text-texto"
+      }`}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(texto.replace(/\*\*/g, ""));
@@ -69,7 +114,8 @@ function Copiar({ texto }: { texto: string }) {
         }
       }}
     >
-      {ok ? "Copiado" : "Copiar"}
+      <Icone className="size-3.5">{ok ? FEITO : COPIAR}</Icone>
+      <span aria-live="polite">{ok ? "Copiado" : "Copiar"}</span>
     </button>
   );
 }
@@ -81,10 +127,12 @@ export function Chat({ configurado, pedidoInicial }: { configurado: boolean; ped
   const [respondendo, setRespondendo] = useState(false);
   const [ferramenta, setFerramenta] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [confirmar, setConfirmar] = useState(false); // "Nova conversa" pede um segundo toque
   const atual = useRef<Mensagem[]>([]);
   const parar = useRef<AbortController | null>(null);
   const fim = useRef<HTMLDivElement>(null);
   const campo = useRef<HTMLTextAreaElement>(null);
+  const botaoNova = useRef<HTMLButtonElement>(null);
   const iniciou = useRef(false);
   const pertoDoFim = useRef(true);
 
@@ -221,111 +269,230 @@ export function Chat({ configurado, pedidoInicial }: { configurado: boolean; ped
 
   if (!configurado) {
     return (
-      <div className="cartao max-w-2xl space-y-2 text-sm">
-        <p className="font-semibold">O assistente ainda não foi ligado.</p>
-        <p className="text-suave">
-          Crie uma chave em platform.openai.com → API keys e coloque como <code>OPENAI_API_KEY</code> nas variáveis de
-          ambiente da Vercel (e no <code>.env.local</code> para usar no computador). Depois publique de novo.
-        </p>
-      </div>
+      <section className="entra cartao max-w-2xl p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="titulo-secao">O assistente ainda não foi ligado</h2>
+          <span className="rounded-md bg-atencao-fundo px-1.5 py-0.5 text-[11px] font-bold tracking-[0.04em] text-atencao uppercase">
+            Sem chave
+          </span>
+        </div>
+        <p className="mt-1 text-[15px] text-suave">Ele precisa de uma chave da OpenAI. O resto do sistema funciona normalmente.</p>
+        <ol className="mt-4 divide-y divide-borda border-t border-borda text-[15px]">
+          {[
+            <>
+              Crie uma chave em{" "}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="link">
+                platform.openai.com/api-keys
+              </a>
+              .
+            </>,
+            <>
+              Coloque a chave como <Codigo>OPENAI_API_KEY</Codigo> nas variáveis de ambiente da Vercel (e no{" "}
+              <Codigo>.env.local</Codigo>, para usar no computador).
+            </>,
+            <>Publique de novo. O assistente aparece nesta tela.</>,
+          ].map((passo, i) => (
+            <li key={i} className="flex gap-3 py-3">
+              <span className="numero w-4 shrink-0 text-lg leading-6 text-suave">{i + 1}</span>
+              <span className="min-w-0">{passo}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
     );
   }
 
+  const ultima = mensagens.length - 1;
+  const rotuloPensando = ferramenta ? `${ROTULO_FERRAMENTA[ferramenta] ?? "Consultando"}…` : "Pensando…";
+  const pedindo = confirmar && !respondendo;
+
+  // Perguntar fecha o "Apagar esta conversa?", senão ele volta no fim da resposta e tira o foco do campo.
+  const perguntar = (texto: string) => {
+    setConfirmar(false);
+    void enviar(texto);
+  };
+  const cancelar = () => {
+    flushSync(() => setConfirmar(false));
+    botaoNova.current?.focus();
+  };
+  // O botão tocado some da tela; o foco volta ao campo. No celular, não: abriria o teclado por cima da conversa.
+  const focarCampo = () => {
+    if (!window.matchMedia("(pointer: coarse)").matches) campo.current?.focus();
+  };
+  const apagar = () => {
+    mudar(() => []);
+    setErro(null);
+    salvar([]);
+    setConfirmar(false);
+    focarCampo();
+  };
+
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-3">
+    <div className="flex max-w-3xl flex-col gap-3">
       {mensagens.length === 0 && !respondendo && (
-        <div className="cartao space-y-3">
-          <p className="text-sm text-suave">
-            Ele lê o seu estoque, o caixa e as regras, e usa as mesmas contas da tela Calcular. Não grava nada: para registrar,
-            você continua usando os botões.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {SUGESTOES.map((s) => (
-              <button key={s} type="button" className="botao-pequeno text-left" onClick={() => enviar(s)}>
-                {s}
+        <div className="escalonado space-y-4">
+          <section className="cartao p-4 md:p-5">
+            <h2 className="titulo-secao">O que ele faz</h2>
+            <p className="mt-1 max-w-prose text-[15px] text-suave">
+              Lê o estoque, o caixa e as regras e faz as mesmas contas da tela Calcular. Não grava nada: para registrar, use os
+              botões de cada tela.
+            </p>
+          </section>
+          <section aria-labelledby="sugestoes">
+            <h2 id="sugestoes" className="sobrescrito mb-2 px-0.5">
+              Perguntas prontas
+            </h2>
+            <div className="escalonado grid gap-2 md:grid-cols-2">
+              {SUGESTOES.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="group cartao cartao-link flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left text-[15px] font-semibold"
+                  onClick={() => enviar(s)}
+                >
+                  <span className="min-w-0">{s}</span>
+                  <Icone className="size-4 text-suave transition-[translate,color] duration-200 ease-saida group-hover:translate-x-0.5 group-hover:text-texto">
+                    {SETA}
+                  </Icone>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {mensagens.length > 0 && (
+        <div
+          role={pedindo ? "group" : undefined}
+          aria-labelledby={pedindo ? "apagar-conversa" : undefined}
+          onKeyDown={(e) => {
+            if (pedindo && e.key === "Escape") cancelar();
+          }}
+          className="flex min-h-11 items-center justify-between gap-3 border-b border-borda pb-2"
+        >
+          {pedindo ? (
+            <>
+              <p id="apagar-conversa" className="aparece text-[15px] font-semibold">
+                Apagar esta conversa?
+              </p>
+              <div className="aparece flex shrink-0 gap-2">
+                <button type="button" autoFocus className="botao-pequeno min-h-11 md:min-h-9" onClick={cancelar}>
+                  Cancelar
+                </button>
+                <button type="button" className="botao-pequeno min-h-11 border-ruim/40 text-ruim md:min-h-9" onClick={apagar}>
+                  Apagar
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="sobrescrito min-w-0 truncate">Conversa · só neste aparelho</p>
+              <button
+                ref={botaoNova}
+                type="button"
+                className="botao-pequeno min-h-11 shrink-0 disabled:pointer-events-none disabled:opacity-50 md:min-h-9"
+                disabled={respondendo}
+                onClick={() => setConfirmar(true)}
+              >
+                <Icone className="size-3.5">{NOVA}</Icone>
+                Nova conversa
               </button>
-            ))}
-          </div>
+            </>
+          )}
         </div>
       )}
 
       {mensagens.map((m, i) =>
         m.papel === "usuario" ? (
-          <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-marca px-4 py-2.5 text-sm text-marca-texto">
+          <div
+            key={i}
+            className="entra ml-auto max-w-[88%] rounded-xl rounded-br-sm border border-lateral-borda bg-lateral px-4 py-2.5 text-[15px] text-white md:max-w-[75%]"
+          >
             <Texto texto={m.texto} />
           </div>
-        ) : (
-          <div key={i} className="cartao max-w-[95%] text-sm">
-            {m.texto ? (
-              <Texto texto={m.texto} />
+        ) : m.texto ? (
+          <article key={i} className="entra cartao text-[15px] md:max-w-[88%]">
+            <div className="sobrescrito mb-1.5">Assistente</div>
+            <Texto texto={m.texto} />
+            {respondendo && i === ultima ? (
+              ferramenta && <Pensando rotulo={rotuloPensando} className="-mb-2" />
             ) : (
-              <span className="animate-pulse text-suave">{ferramenta ? `${ROTULO_FERRAMENTA[ferramenta] ?? "Consultando"}…` : "Pensando…"}</span>
-            )}
-            {m.texto && !(respondendo && i === mensagens.length - 1) && (
-              <div className="mt-3 flex justify-end">
+              <div className="-mr-2 -mb-2 mt-1 flex justify-end">
                 <Copiar texto={m.texto} />
               </div>
             )}
-          </div>
-        ),
+          </article>
+        ) : respondendo && i === ultima ? (
+          <Pensando key={i} rotulo={rotuloPensando} className="px-1" />
+        ) : null,
       )}
 
       {erro && (
-        <p role="alert" className="rounded-xl bg-ruim-fundo px-3 py-2 text-sm text-ruim">
+        <p
+          role="alert"
+          className="entra flex items-start gap-2 rounded-lg border border-ruim/25 bg-ruim-fundo px-3 py-2.5 text-sm font-medium text-ruim"
+        >
+          <Icone className="mt-px size-4">{ALERTA}</Icone>
           {erro}
         </p>
       )}
       {/* A margem desconta o campo fixo e as abas do celular, para o fim da resposta não ficar escondido. */}
-      <div ref={fim} className="scroll-mb-[calc(8.5rem+env(safe-area-inset-bottom))] md:scroll-mb-20" />
+      <div ref={fim} className="scroll-mb-[calc(8.5rem+env(safe-area-inset-bottom))] md:scroll-mb-28" />
 
+      {/* Fundo cheio (e 4 px abaixo, até as abas) para o texto não aparecer por trás do campo. */}
       <form
-        className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] -mx-1 flex items-end gap-2 bg-fundo/95 px-1 py-2 backdrop-blur md:bottom-0"
+        className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-1 bg-fundo px-1 py-2 shadow-[0_4px_0_var(--fundo)] md:bottom-0 md:pb-4"
         onSubmit={(e) => {
           e.preventDefault();
-          void enviar(rascunho);
+          perguntar(rascunho);
         }}
       >
-        <textarea
-          ref={campo}
-          className="campo max-h-40 min-h-11 resize-none overflow-y-auto"
-          rows={1}
-          value={rascunho}
-          maxLength={LIMITES.textoUsuario}
-          placeholder="Pergunte ou peça um anúncio…"
-          aria-label="Mensagem para o assistente"
-          onChange={(e) => setRascunho(e.target.value)}
-          onKeyDown={(e) => {
-            // No celular o Enter quebra a linha; envia pelo botão.
-            const toque = window.matchMedia("(pointer: coarse)").matches;
-            if (e.key === "Enter" && !e.shiftKey && !toque && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void enviar(rascunho);
-            }
-          }}
-        />
-        {respondendo ? (
-          <button type="button" className="botao-secundario" onClick={() => parar.current?.abort()}>
-            Parar
-          </button>
-        ) : (
-          <button className="botao-principal" disabled={!rascunho.trim()}>
-            Enviar
-          </button>
-        )}
+        <div className="flex items-end gap-2">
+          {/* A borda fica na moldura: o campo sem borda mede exatamente o próprio scrollHeight (sem rolar 2 px). */}
+          <div className="campo p-0 shadow-(--sombra) focus-within:border-grafico focus-within:ring-3 focus-within:ring-grafico/15">
+            <textarea
+              ref={campo}
+              className="block max-h-40 min-h-[42px] w-full resize-none overflow-y-auto rounded-[7px] px-3 py-[9px] leading-6 placeholder:text-suave/60"
+              rows={1}
+              value={rascunho}
+              maxLength={LIMITES.textoUsuario}
+              placeholder="Pergunte ou peça um anúncio…"
+              aria-label="Mensagem para o assistente"
+              onChange={(e) => setRascunho(e.target.value)}
+              onKeyDown={(e) => {
+                // No celular o Enter quebra a linha; envia pelo botão.
+                const toque = window.matchMedia("(pointer: coarse)").matches;
+                if (e.key === "Enter" && !e.shiftKey && !toque && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  perguntar(rascunho);
+                }
+              }}
+            />
+          </div>
+          {respondendo ? (
+            <button
+              type="button"
+              className="botao-secundario min-h-11 shrink-0 px-3.5"
+              onClick={() => {
+                parar.current?.abort();
+                focarCampo();
+              }}
+            >
+              <span className="size-2.5 rounded-[2px] bg-current" aria-hidden />
+              Parar
+            </button>
+          ) : (
+            <button aria-label="Enviar" title="Enviar" className="botao-principal size-11 shrink-0 px-0" disabled={!rascunho.trim()}>
+              <Icone className="size-5">{ENVIAR}</Icone>
+            </button>
+          )}
+        </div>
+        <p className="mt-1.5 hidden px-0.5 text-[12px] text-suave md:pointer-fine:block">Enter envia · Shift + Enter quebra a linha</p>
       </form>
-      {mensagens.length > 0 && !respondendo && (
-        <button
-          type="button"
-          className="self-center text-xs font-medium text-suave underline"
-          onClick={() => {
-            mudar(() => []);
-            setErro(null);
-            salvar([]);
-          }}
-        >
-          Começar nova conversa
-        </button>
-      )}
     </div>
   );
+}
+
+function Codigo({ children }: { children: ReactNode }) {
+  return <code className="rounded bg-superficie-2 px-1 py-0.5 font-mono text-[13px] ring-1 ring-borda ring-inset">{children}</code>;
 }

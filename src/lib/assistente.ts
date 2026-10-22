@@ -17,6 +17,7 @@ import {
 } from "./calculo";
 import { dataBR, mesCurto, pctTexto, reais } from "./formato";
 import { inicioMes, mesesEntre } from "./periodo";
+import { rotuloCanal, rotuloPagamento, type Canal, type Pagamento } from "./vendas";
 
 /** O que as ferramentas precisam saber (o mesmo formato de lib/dados.ts, sem fotos). */
 export type ItemAssistente = {
@@ -34,6 +35,7 @@ export type ItemAssistente = {
   nota: string | null;
   gastos: { descricao: string; valor: number; data: string }[];
   fotos?: unknown[];
+  venda?: { canal: Canal | null; pagamento: Pagamento | null } | null;
 };
 
 export type DadosAssistente = { itens: ItemAssistente[]; regras: Regras; hoje: string };
@@ -109,7 +111,7 @@ Regras obrigatórias:
 - Nunca invente números nem faça contas de cabeça. Use as ferramentas: elas aplicam as fórmulas do sistema e já devolvem os valores em R$. Repita os valores exatamente como vieram.
 - Para decidir uma compra, use simular_compra. Se a pessoa não disse por quanto vende, pergunte, ou sugira um valor com base em itens parecidos já vendidos (listar_itens com busca) e deixe claro que é estimativa. Diga o "pague no máximo", o veredito quando houver preço pedido, e avise se passa do limite do caixa. Lembre do tempo que itens parecidos ficaram parados, se houver.
 - Você não acessa a internet nem preços da OLX ou do Marketplace. Quando falar de preço de mercado, diga que é estimativa e que vale conferir anúncios parecidos.
-- Você não grava nada. Para registrar, oriente pelo botão: compra em Calcular → "Comprei, registrar no estoque" (ou Estoque → "+ Novo item"); no item, "Vendi", "+ Gasto", "Anunciar" ou "Editar"; regras na tela Regras.
+- Você não grava nada. Para registrar, oriente pelo botão: compra em Calcular → "Comprei, registrar no estoque" (ou Pátio → "+ Novo item"); venda em Vendas → "+ Registrar venda" (com canal e pagamento) ou "Vendi" no item; no item, "+ Gasto", "Anunciar" ou "Editar"; texto, fotos e link do anúncio na tela Anúncios; quem chamou interessado na tela Interessados; regras e meta do mês na tela Regras.
 - Item do tipo "capital próprio" (como a CB300R) não tem custo de compra e não conta no lucro, na margem nem no giro; os gastos saem do caixa e a venda entra no caixa.
 
 Anúncios:
@@ -123,6 +125,7 @@ Formato: texto simples. Pode usar listas com "- " e **negrito**. Não use tabela
 Situação agora (${dataBR(hoje)}):
 - Caixa livre: ${reais(agora.caixaLivre)}. Limite para um item só: ${limite == null ? "caixa zerado, não comprar antes de vender algo" : reais(limite)}.
 - Empatado no estoque: ${reais(agora.empatado)} em ${agora.empatadoQtd} item(ns). Comprados: ${conta("comprado")}; anunciados: ${conta("anunciado")}; vendidos: ${conta("vendido")}.
+- Lucro de revenda neste mês: ${reais(resumo(itens, regras, { de: inicioMes(hoje), ate: hoje }).lucroRealizado)}; meta do mês: ${reais(regras.meta_lucro_mes)}.
 - Regras: ${regrasTexto(regras)}.`;
 }
 
@@ -261,6 +264,8 @@ function linhaItem(i: ItemAssistente, hoje: string) {
     custo_total: reais(custo),
     preco_anuncio: reais(i.preco_alvo),
     vendido_por: i.situacao === "vendido" ? reais(i.venda_valor) : undefined,
+    canal_da_venda: i.situacao === "vendido" ? rotuloCanal(i.venda?.canal) : undefined,
+    pagamento: i.situacao === "vendido" ? rotuloPagamento(i.venda?.pagamento) : undefined,
     lucro: lucro != null ? reais(lucro) : undefined,
     lucro_previsto: previsto != null ? reais(previsto) : undefined,
     dias_parado: diasParado(i, hoje),

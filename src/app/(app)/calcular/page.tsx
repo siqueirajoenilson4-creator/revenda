@@ -8,11 +8,11 @@ import { Cabecalho } from "@/components/Cabecalho";
 export const metadata: Metadata = { title: "Calcular" };
 
 export default async function Calcular() {
-  const r = await regras();
-  const caixa = caixaLivre(await itens("nenhuma"), r);
+  const [r, lista] = await Promise.all([regras(), itens("nenhuma")]);
+  const caixa = caixaLivre(lista, r);
   return (
     <>
-      <Cabecalho titulo="Calcular compra" sub="Quanto pagar no máximo sem perder a margem" />
+      <Cabecalho sobre="Antes de comprar" titulo="Calcular compra" sub="Quanto pagar no máximo sem perder a margem." />
       <Calculadora regras={r} caixa={caixa} limite={limitePorItem(caixa, r)} hoje={hoje()} />
     </>
   );

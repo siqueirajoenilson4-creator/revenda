@@ -6,6 +6,18 @@ Ferramenta do negócio de compra e venda de usados (Londrina e região). Especif
 **Fase 1 (pronta):** login do dono, Calcular, Estoque, Gastos, Vendi, Caixa e giro, Regras, fotos dos itens,
 backup/importação em JSON e CSV, PWA (instala no celular).
 
+**Fase 1B (pronta):** Visão geral como tela inicial, área de Vendas (canal, pagamento, comprador, entrega),
+meta de lucro do mês, Caixa com extrato.
+
+**Fase 2 (pronta):** Anúncios com gerador de texto, fotos em ordem, Facebook Marketplace assistido (copiar,
+baixar/compartilhar fotos, abrir o Marketplace, colar o link), situação por canal, lembrete de renovar a cada
+7 dias, histórico de preço, Interessados com respostas prontas e aviso de quem espera resposta há mais de 2 horas.
+
+**Fase 3 e 4 (OLX):** dependem do cadastro de integrador aprovado pela OLX. Até lá a OLX funciona como canal
+manual (copiar o texto e colar o link).
+
+**Assistente com IA:** responde sobre os números, ajuda a decidir compras e escreve anúncios (só leitura).
+
 Next.js 16 + TypeScript + Tailwind · Supabase (banco, login e fotos) · Vercel (hospedagem). Tudo no plano grátis.
 
 ## Configurar o Supabase (uma vez)
@@ -17,6 +29,9 @@ e no bucket `revenda-fotos`; nada do schema `public` nem de `auth` é alterado.
    (só cria objetos dentro de `revenda`).
 2. **SQL Editor:** rode [supabase/migrations/0002_revenda_fotos.sql](supabase/migrations/0002_revenda_fotos.sql)
    (cria o bucket privado `revenda-fotos` e uma política que só vale para ele).
+   Depois, na ordem, [0003_revenda_vendas.sql](supabase/migrations/0003_revenda_vendas.sql) (vendas e meta do mês)
+   e [0004_revenda_anuncios.sql](supabase/migrations/0004_revenda_anuncios.sql) (anúncios, interessados e respostas
+   prontas). As duas só mexem no schema `revenda` e rodam dentro de uma transação.
 3. **Authentication → Users:** garanta que sua conta existe (pode ser a mesma do outro sistema).
 4. **SQL Editor:** rode [supabase/cadastrar-dono.sql](supabase/cadastrar-dono.sql) com o seu e-mail.
    Só quem está em `revenda.donos` enxerga os dados; qualquer outra conta recebe "sem acesso".

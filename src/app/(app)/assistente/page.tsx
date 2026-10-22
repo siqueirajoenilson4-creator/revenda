@@ -13,7 +13,7 @@ export default async function PaginaAssistente({ searchParams }: PageProps<"/ass
 
   return (
     <>
-      <Cabecalho titulo="Assistente" sub="Pergunte dos seus números, peça ajuda para decidir uma compra ou para escrever um anúncio" />
+      <Cabecalho sobre="Assistente com IA" titulo="Assistente" sub="Pergunte dos números, decida uma compra ou peça um anúncio." />
       <Chat
         configurado={iaConfigurada()}
         pedidoInicial={alvo ? `Escreva o anúncio de "${alvo.nome}" (id ${alvo.id}) para OLX e Facebook Marketplace.` : undefined}

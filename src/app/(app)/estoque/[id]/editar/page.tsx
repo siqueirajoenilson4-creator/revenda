@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Cabecalho } from "@/components/Cabecalho";
 import { FormItem } from "@/components/FormItem";
 import { item as lerItem } from "@/lib/dados";
 import { hoje } from "@/lib/formato";
+import { Voltar } from "../../Voltar";
 
 export const metadata: Metadata = { title: "Editar item" };
 
@@ -17,8 +18,8 @@ export default async function EditarItem({ params }: PageProps<"/estoque/[id]/ed
   };
   return (
     <>
-      <Link href={`/estoque/${i.id}`} className="mb-3 inline-block text-sm text-suave hover:text-texto">← {i.nome}</Link>
-      <h1 className="titulo-pagina mb-4">Editar item</h1>
+      <Voltar href={`/estoque/${i.id}`}>Voltar ao item</Voltar>
+      <Cabecalho sobre="Editar item" titulo={<span className="break-words">{i.nome}</span>} />
       <FormItem item={campos} hoje={hoje()} />
     </>
   );

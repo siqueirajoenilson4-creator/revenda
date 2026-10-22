@@ -1,251 +1,431 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { limitePorItem, resumo, type Regras } from "@/lib/calculo";
+import { pctTexto, reais } from "@/lib/formato";
 import {
-  custoItem,
-  diasEntre,
-  diasParado,
-  limitePorItem,
-  lucroItem,
-  lucroPorMes,
-  resumo,
-  type ItemCalc,
-  type Regras,
-} from "@/lib/calculo";
-import { dataBR, pctTexto, reais } from "@/lib/formato";
-import { mesesEntre, periodo, PERIODOS, type PeriodoId } from "@/lib/periodo";
+  avisos as gerarAvisos,
+  barrasMensais,
+  barrasSemanais,
+  comparar,
+  dataCurta,
+  dataPorExtenso,
+  intervalos,
+  nomeAnterior,
+  numeros,
+  patio,
+  PERIODOS_VISAO,
+  reaisInteiros,
+  ultimasVendas,
+  type Aviso,
+  type CartaoPatio,
+  type ItemVisao,
+  type LinhaVenda,
+  type PeriodoVisao,
+} from "@/lib/visao";
 import { Cabecalho, Indicador, Segmentos } from "@/components/Cabecalho";
 import { GraficoLucro } from "@/components/GraficoLucro";
-import { SeloDias } from "@/components/Selos";
+import { SeloDias, SeloSituacao } from "@/components/Selos";
 
-type ItemPainel = ItemCalc & { id: string; nome: string; preco_alvo: number | null };
+const NESTE: Record<PeriodoVisao, string> = { semana: "nesta semana", mes: "neste mês", ano: "neste ano" };
 
-const DIAS_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+export function Painel({ itens, regras, hoje }: { itens: ItemVisao[]; regras: Regras; hoje: string }) {
+  const [periodoId, setPeriodoId] = useState<PeriodoVisao>("mes");
+  const porMes = periodoId === "ano";
 
-function dataExtenso(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
-  const dia = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${DIAS_SEMANA[dia]}, ${d} de ${MESES[m - 1]}`;
-}
+  // Caixa e empatado são a foto de agora; o resto depende do período.
+  const agora = useMemo(() => resumo(itens, regras), [itens, regras]);
+  const { atual, anterior } = useMemo(() => intervalos(periodoId, hoje), [periodoId, hoje]);
+  const doPeriodo = useMemo(() => numeros(itens, regras, atual), [itens, regras, atual]);
+  const doAnterior = useMemo(() => numeros(itens, regras, anterior), [itens, regras, anterior]);
+  const barras = useMemo(() => (porMes ? barrasMensais(itens, hoje) : barrasSemanais(itens, hoje)), [itens, hoje, porMes]);
+  const cartoes = useMemo(() => patio(itens, hoje), [itens, hoje]);
+  const lista = useMemo(() => gerarAvisos(itens, hoje), [itens, hoje]);
+  const vendas = useMemo(() => ultimasVendas(itens), [itens]);
 
-export function Painel({ itens, regras, hoje }: { itens: ItemPainel[]; regras: Regras; hoje: string }) {
-  const [periodoId, setPeriodoId] = useState<PeriodoId>("mes");
-  const res = useMemo(() => resumo(itens, regras, periodo(periodoId, hoje)), [itens, regras, periodoId, hoje]);
-  const limite = limitePorItem(res.caixaLivre, regras);
-
-  const estoque = itens.filter((i) => i.situacao !== "vendido");
-  const revendaAberta = estoque.filter((i) => i.tipo === "revenda");
-  const comPreco = revendaAberta.filter((i) => i.preco_alvo != null);
-  const lucroPrevisto = comPreco.reduce((s, i) => s + (i.preco_alvo! - custoItem(i)), 0);
-  const capital = itens.filter((i) => i.tipo === "capital");
-  const capitalAberto = capital.filter((i) => i.situacao !== "vendido");
-
-  const parados = estoque
-    .map((i) => ({ i, dias: diasParado(i, hoje) ?? 0 }))
-    .filter((x) => x.dias > 15)
-    .sort((a, b) => b.dias - a.dias);
-
-  const ultimasVendas = itens
-    .filter((i) => i.situacao === "vendido" && i.venda_data)
-    .sort((a, b) => b.venda_data!.localeCompare(a.venda_data!))
-    .slice(0, 6);
-
-  const porMes = lucroPorMes(itens);
-  const ultimos12 = mesesEntre(`${Number(hoje.slice(0, 4)) - 1}-${hoje.slice(5, 7)}`, hoje.slice(0, 7))
-    .slice(-12)
-    .map((mes) => ({ mes, lucro: porMes.get(mes) ?? 0 }));
-  const temVendas = ultimos12.some((m) => m.lucro !== 0);
-
-  const contagem = {
-    parados: itens.filter((i) => i.situacao === "comprado").length,
-    anunciados: itens.filter((i) => i.situacao === "anunciado").length,
-    vendidos: itens.filter((i) => i.situacao === "vendido").length,
-  };
+  const limite = limitePorItem(agora.caixaLivre, regras);
+  const quando = nomeAnterior(periodoId, hoje);
+  const comparavel = doAnterior.vendas > 0;
+  const cmpFaturamento = comparar(doPeriodo.faturamento, doAnterior.faturamento, quando);
+  const cmpLucro = comparar(doPeriodo.lucro, doAnterior.lucro, quando);
+  const parados30 = cartoes.filter((c) => (c.dias ?? 0) > 30).length;
+  const extenso = dataPorExtenso(hoje);
 
   return (
     <>
       <Cabecalho
-        titulo="Painel"
-        sub={<span className="first-letter:uppercase">{dataExtenso(hoje)}</span>}
+        sobre={extenso.charAt(0).toUpperCase() + extenso.slice(1)}
+        titulo="Visão geral"
         acoes={
           <>
-            <Link href="/calcular" prefetch className="botao-secundario">Calcular compra</Link>
-            <Link href="/estoque/novo" className="botao-principal">+ Novo item</Link>
+            <div className="w-full sm:w-auto max-sm:[&_button]:flex-1 max-sm:[&>div]:w-full">
+              <Segmentos opcoes={PERIODOS_VISAO} valor={periodoId} aoMudar={setPeriodoId} />
+            </div>
+            <Link href="/calcular" prefetch className="botao-secundario flex-1 sm:flex-none">
+              Calcular compra
+            </Link>
+            <Link href="/estoque/novo" className="botao-principal flex-1 sm:flex-none">
+              + Novo item
+            </Link>
           </>
         }
       />
 
       {limite == null && (
-        <div className="mb-4 rounded-xl border border-ruim/30 bg-ruim-fundo px-4 py-3 text-sm font-medium text-ruim">
+        <div className="entra mb-4 flex items-center gap-2.5 rounded-xl border border-ruim/30 bg-ruim-fundo px-4 py-3 text-sm font-semibold text-ruim">
+          <svg viewBox="0 0 24 24" className="size-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" />
+          </svg>
           Caixa zerado: venda a moto antes de comprar.
         </div>
       )}
 
-      {/* Foto de agora */}
-      <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section aria-label="Indicadores" className="escalonado grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1360px]:grid-cols-6">
+        <Indicador
+          rotulo="Faturamento"
+          valor={reaisInteiros(doPeriodo.faturamento)}
+          detalhe={comparavel ? cmpFaturamento.texto : "sem vendas para comparar"}
+          tomDetalhe={comparavel ? cmpFaturamento.tom : undefined}
+        />
         <Indicador
           destaque
+          rotulo="Lucro"
+          valor={reaisInteiros(doPeriodo.lucro)}
+          tom={doPeriodo.lucro < 0 ? "ruim" : undefined}
+          detalhe={comparavel ? cmpLucro.texto : doPeriodo.vendas ? "lucro das vendas de revenda" : `nenhuma venda ${NESTE[periodoId]}`}
+        />
+        <Indicador
+          rotulo="Vendas"
+          valor={String(doPeriodo.vendas)}
+          detalhe={doPeriodo.ticketMedio != null ? `ticket médio ${reaisInteiros(doPeriodo.ticketMedio)}` : `nenhuma ${NESTE[periodoId]}`}
+        />
+        <Margem margem={doPeriodo.margemCusto} meta={regras.margem_min_pct} />
+        <Indicador
           rotulo="Caixa livre"
-          valor={reais(res.caixaLivre, true)}
-          tom={res.caixaLivre < 0 ? "ruim" : undefined}
-          detalhe={limite == null ? "Sem caixa para comprar" : `Até ${reais(limite, true)} por item`}
-        />
-        <Indicador
-          rotulo="Empatado em estoque"
-          valor={reais(res.empatado, true)}
-          detalhe={`${res.empatadoQtd} ${res.empatadoQtd === 1 ? "item" : "itens"} sem vender`}
-        />
-        <Indicador
-          rotulo="Lucro previsto"
-          valor={reais(lucroPrevisto, true)}
-          tom={lucroPrevisto < 0 ? "ruim" : undefined}
+          valor={reaisInteiros(agora.caixaLivre)}
+          tom={agora.caixaLivre < 0 ? "ruim" : undefined}
           detalhe={
-            revendaAberta.length
-              ? `${comPreco.length} de ${revendaAberta.length} com preço de anúncio`
-              : "Nenhum item de revenda em estoque"
+            agora.caixaLivre > 0 ? `${reaisInteiros((agora.caixaLivre * regras.reserva_pct) / 100)} de reserva` : "sem caixa para comprar"
           }
+          tomDetalhe={agora.caixaLivre > 0 ? undefined : "ruim"}
         />
         <Indicador
-          rotulo="Capital da moto"
-          valor={
-            capitalAberto.length
-              ? capitalAberto.some((i) => i.preco_alvo != null)
-                ? reais(capitalAberto.reduce((s, i) => s + (i.preco_alvo ?? 0), 0), true)
-                : "Sem preço"
-              : capital.length
-                ? reais(capital.reduce((s, i) => s + (i.venda_valor ?? 0), 0), true)
-                : "—"
-          }
+          rotulo="Empatado no pátio"
+          valor={reaisInteiros(agora.empatado)}
           detalhe={
-            capitalAberto.length
-              ? `Gastos até agora: ${reais(capitalAberto.reduce((s, i) => s + custoItem(i), 0), true)}`
-              : capital.length
-                ? "Vendida, entrou no caixa"
-                : "Nenhum item de capital"
+            parados30 > 0
+              ? `${parados30} há mais de 30 dias`
+              : agora.empatadoQtd
+                ? `${agora.empatadoQtd} ${agora.empatadoQtd === 1 ? "item" : "itens"} no pátio`
+                : "pátio vazio"
           }
+          tomDetalhe={parados30 > 0 ? "atencao" : undefined}
         />
       </section>
+      {comparavel && (
+        <p className="aparece mt-2 text-xs text-suave">
+          Faturamento e lucro comparados com o mesmo trecho do período anterior: {dataCurta(anterior.de, hoje)} a{" "}
+          {dataCurta(anterior.ate, hoje)}.
+        </p>
+      )}
 
-      {/* Resultado do período */}
-      <section className="mb-6">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">Resultado</h2>
-          <Segmentos opcoes={PERIODOS} valor={periodoId} aoMudar={setPeriodoId} />
-        </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Indicador
-            rotulo="Lucro realizado"
-            valor={reais(res.lucroRealizado, true)}
-            tom={res.lucroRealizado < 0 ? "ruim" : res.lucroRealizado > 0 ? "bom" : undefined}
-            detalhe={`${res.vendidos} ${res.vendidos === 1 ? "venda" : "vendas"}`}
-          />
-          <Indicador rotulo="Faturamento" valor={reais(res.vendasRevenda, true)} detalhe="Soma das vendas de revenda" />
-          <Indicador rotulo="Margem média" valor={pctTexto(res.margemMedia)} detalhe="Lucro ÷ faturamento" />
-          <Indicador
-            rotulo="Giro médio"
-            valor={res.giroMedio == null ? "—" : `${Math.round(res.giroMedio)} dias`}
-            detalhe="Da compra até a venda"
+      <div className="escalonado mt-5 grid gap-4 md:mt-6 xl:grid-cols-3">
+        <Avisos lista={lista} className="xl:col-start-3 xl:row-start-1" />
+        <div className="min-w-0 xl:col-span-2 xl:col-start-1 xl:row-start-1">
+          <GraficoLucro
+            barras={barras}
+            titulo={porMes ? "Vendas e lucro por mês" : "Vendas e lucro por semana"}
+            sub={porMes ? "Últimos 12 meses" : `Últimas ${barras.length} semanas, de segunda a domingo`}
+            vazio={porMes ? "Nenhuma venda nos últimos 12 meses." : `Nenhuma venda nas últimas ${barras.length} semanas.`}
           />
         </div>
-        <p className="mt-2 text-xs text-suave">A moto (capital próprio) entra no caixa, mas não em lucro, margem e giro.</p>
-      </section>
+        <UltimasVendas vendas={vendas} hoje={hoje} className="xl:col-span-3" />
+        <Patio cartoes={cartoes} empatado={agora.empatado} className="xl:col-span-3" />
+      </div>
+    </>
+  );
+}
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <section className="cartao lg:col-span-2">
-          <div className="mb-3 flex items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold">Lucro por mês</h2>
-            <span className="text-xs text-suave">últimos 12 meses</span>
-          </div>
-          {temVendas ? (
-            <GraficoLucro meses={ultimos12} />
-          ) : (
-            <p className="py-10 text-center text-sm text-suave">O gráfico aparece depois da primeira venda de revenda.</p>
-          )}
-        </section>
+/** Margem sobre o custo contra a margem mínima das Regras. */
+function Margem({ margem, meta }: { margem: number | null; meta: number }) {
+  const pct = margem == null ? null : Math.round(margem * 100);
+  return (
+    <Indicador
+      rotulo="Margem sobre custo"
+      valor={margem == null ? "—" : pctTexto(margem, 0)}
+      tom={pct != null && pct < 0 ? "ruim" : undefined}
+      detalhe={
+        pct == null
+          ? `meta ${meta}%`
+          : pct > meta
+            ? `acima da meta de ${meta}%`
+            : pct === meta
+              ? `na meta de ${meta}%`
+              : `abaixo da meta de ${meta}%`
+      }
+      tomDetalhe={pct == null ? undefined : pct >= meta ? "bom" : "atencao"}
+    />
+  );
+}
 
-        <section className="cartao flex flex-col">
-          <h2 className="mb-1 text-base font-semibold">Precisa de atenção</h2>
-          <p className="mb-3 text-xs text-suave">Parados há mais de 15 dias</p>
-          {parados.length === 0 ? (
-            <p className="flex-1 py-6 text-center text-sm text-suave">Nenhum item parado há muito tempo.</p>
-          ) : (
-            <ul className="-mx-2 flex-1">
-              {parados.slice(0, 6).map(({ i, dias }) => (
-                <li key={i.id}>
-                  <Link
-                    href={`/estoque/${i.id}`}
-                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-superficie-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">{i.nome}</div>
-                      <div className="text-xs text-suave">Custo {reais(custoItem(i), true)}</div>
-                    </div>
-                    <SeloDias dias={dias} vendido={false} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="mt-3 grid grid-cols-3 gap-2 border-t border-borda pt-3 text-center">
-            {[
-              ["Parados", contagem.parados, "parados"],
-              ["Anunciados", contagem.anunciados, "anunciados"],
-              ["Vendidos", contagem.vendidos, "vendidos"],
-            ].map(([rotulo, n, filtro]) => (
-              <Link key={filtro} href={`/estoque?filtro=${filtro}`} prefetch className="rounded-lg py-1 hover:bg-superficie-2">
-                <div className="text-lg font-semibold tabular-nums">{n}</div>
-                <div className="text-xs text-suave">{rotulo}</div>
+// ---------- Precisa de você ----------
+
+const PONTO: Record<Aviso["gravidade"], { cor: string; leitor: string }> = {
+  ruim: { cor: "bg-ruim", leitor: "Urgente" },
+  atencao: { cor: "bg-atencao", leitor: "Atenção" },
+  info: { cor: "bg-grafico", leitor: "Pendente" },
+};
+
+const MAX_AVISOS = 5;
+
+function Avisos({ lista, className }: { lista: Aviso[]; className: string }) {
+  const resto = lista.length - MAX_AVISOS;
+  return (
+    <section aria-labelledby="titulo-avisos" className={`cartao flex flex-col p-4 md:p-5 ${className}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 id="titulo-avisos" className="titulo-secao">
+          Precisa de você
+        </h2>
+        {lista.length > 0 && <span className="text-[13px] font-semibold text-suave tabular-nums">{lista.length}</span>}
+      </div>
+      {lista.length === 0 ? (
+        <div className="flex flex-1 flex-col justify-center py-5">
+          <p className="font-semibold">Nada pendente.</p>
+          <p className="mt-0.5 text-[13px] text-suave">Itens parados há mais de 30 dias e gastos por lançar aparecem aqui.</p>
+        </div>
+      ) : (
+        <ul className="escalonado -mx-2 mt-1 divide-y divide-borda">
+          {lista.slice(0, MAX_AVISOS).map((a) => (
+            <li key={a.id}>
+              <Link
+                href={`/estoque/${a.itemId}`}
+                className="flex gap-3 rounded-lg px-2 py-3 transition-colors duration-150 hover:bg-superficie-2 active:bg-superficie-2"
+              >
+                <span className={`mt-[7px] size-2.5 shrink-0 rounded-full ${PONTO[a.gravidade].cor}`} aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="sr-only">{PONTO[a.gravidade].leitor}: </span>
+                  <span className="block leading-snug font-semibold">{a.titulo}</span>
+                  <span className="mt-0.5 line-clamp-2 text-[13px] text-suave">{a.texto}</span>
+                </span>
               </Link>
-            ))}
-          </div>
-        </section>
+            </li>
+          ))}
+        </ul>
+      )}
+      {resto > 0 && (
+        <Link href="/estoque" prefetch className="link mt-auto inline-flex min-h-11 items-center pt-1 text-sm md:min-h-9">
+          Mais {resto} no estoque
+        </Link>
+      )}
+    </section>
+  );
+}
+
+// ---------- Últimas vendas ----------
+
+function LucroVenda({ v, sinal }: { v: LinhaVenda; sinal?: boolean }) {
+  if (v.lucro == null) return <span className="font-medium text-suave">Entra no caixa</span>;
+  return (
+    <span className={`font-bold ${v.lucro < 0 ? "text-ruim" : "text-bom"}`}>
+      {sinal && v.lucro > 0 ? "+" : ""}
+      {reais(v.lucro, true)}
+    </span>
+  );
+}
+
+const diasTexto = (n: number) => `${n} ${n === 1 ? "dia" : "dias"}`;
+
+function UltimasVendas({ vendas, hoje, className }: { vendas: LinhaVenda[]; hoje: string; className: string }) {
+  const router = useRouter();
+  return (
+    <section aria-labelledby="titulo-vendas" className={`cartao overflow-hidden p-0 ${className}`}>
+      <div className="flex items-center justify-between gap-3 px-4 pt-4 md:px-5 md:pt-5">
+        <h2 id="titulo-vendas" className="titulo-secao">
+          Últimas vendas
+        </h2>
+        {vendas.length > 0 && (
+          <Link href="/estoque?filtro=vendidos" prefetch className="link -my-3 inline-flex min-h-11 items-center text-sm">
+            Ver todas
+          </Link>
+        )}
       </div>
 
-      <section className="cartao p-0">
-        <div className="flex items-center justify-between px-4 pb-2 pt-4">
-          <h2 className="text-base font-semibold">Últimas vendas</h2>
-          <Link href="/estoque?filtro=vendidos" prefetch className="text-sm font-medium text-marca hover:underline">Ver todas</Link>
-        </div>
-        {ultimasVendas.length === 0 ? (
-          <p className="px-4 pb-6 pt-2 text-sm text-suave">Nenhuma venda ainda.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-suave">
-              <tr className="border-b border-borda">
-                <th className="px-4 py-2 font-medium">Item</th>
-                <th className="hidden px-3 py-2 font-medium sm:table-cell">Data</th>
-                <th className="px-3 py-2 text-right font-medium">Venda</th>
-                <th className="px-4 py-2 text-right font-medium">Lucro</th>
+      {vendas.length === 0 ? (
+        <p className="px-4 pt-1 pb-5 text-sm text-suave md:px-5">
+          Nenhuma venda ainda. Abra um item no Pátio e toque em <span className="font-semibold text-texto">Vendi</span>.
+        </p>
+      ) : (
+        <>
+          {/* Celular e tablet: lista */}
+          <ul className="escalonado mt-3 divide-y divide-borda border-t border-borda lg:hidden">
+            {vendas.map((v) => (
+              <li key={v.id}>
+                <Link
+                  href={`/estoque/${v.id}`}
+                  className="flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-150 hover:bg-superficie-2 active:bg-superficie-2 md:px-5"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{v.nome}</span>
+                    <span className="block text-[13px] text-suave tabular-nums">
+                      {dataCurta(v.data, hoje)}
+                      {v.dias != null && ` · ${diasTexto(v.dias)}`}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-semibold tabular-nums">{reais(v.venda, true)}</span>
+                    <span className="block text-[13px] tabular-nums">
+                      <LucroVenda v={v} sinal />
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          {/* Computador: tabela; a linha inteira abre o item */}
+          <table className="mt-3 hidden w-full text-sm lg:table">
+            <thead>
+              <tr className="border-y border-borda bg-superficie-2">
+                <th scope="col" className="sobrescrito py-2.5 pr-3 pl-5 text-left">Data</th>
+                <th scope="col" className="sobrescrito px-3 py-2.5 text-left">Item</th>
+                <th scope="col" className="sobrescrito px-3 py-2.5 text-right">Custo</th>
+                <th scope="col" className="sobrescrito px-3 py-2.5 text-right">Vendeu</th>
+                <th scope="col" className="sobrescrito px-3 py-2.5 text-right">Lucro</th>
+                <th scope="col" className="sobrescrito px-3 py-2.5 text-right">Margem</th>
+                <th scope="col" className="sobrescrito py-2.5 pr-5 pl-3 text-right">Dias</th>
               </tr>
             </thead>
-            <tbody>
-              {ultimasVendas.map((i) => {
-                const l = lucroItem(i);
-                return (
-                  <tr key={i.id} className="border-b border-borda last:border-0">
-                    <td className="max-w-0 px-4 py-2.5">
-                      <Link href={`/estoque/${i.id}`} className="block truncate font-medium hover:underline">{i.nome}</Link>
-                      <div className="text-xs text-suave sm:hidden">{dataBR(i.venda_data)}</div>
-                    </td>
-                    <td className="hidden whitespace-nowrap px-3 py-2.5 text-suave sm:table-cell">
-                      {dataBR(i.venda_data)}
-                      {i.compra_data && (
-                        <span className="text-xs"> · {diasEntre(i.compra_data, i.venda_data!)} dias</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{reais(i.venda_valor, true)}</td>
-                    <td className={`whitespace-nowrap px-4 py-2.5 text-right font-medium tabular-nums ${l == null ? "text-suave" : l > 0 ? "text-bom" : "text-ruim"}`}>
-                      {l == null ? "capital" : reais(l, true)}
-                    </td>
-                  </tr>
-                );
-              })}
+            <tbody className="escalonado">
+              {vendas.map((v) => (
+                <tr
+                  key={v.id}
+                  onClick={(e) => {
+                    if (!(e.target as HTMLElement).closest("a")) router.push(`/estoque/${v.id}`);
+                  }}
+                  className="cursor-pointer border-b border-borda transition-colors duration-150 last:border-0 hover:bg-superficie-2"
+                >
+                  <td className="py-3 pr-3 pl-5 whitespace-nowrap text-suave tabular-nums">{dataCurta(v.data, hoje)}</td>
+                  <td className="w-full max-w-0 px-3 py-3">
+                    <Link href={`/estoque/${v.id}`} className="block truncate font-semibold hover:underline">
+                      {v.nome}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{reais(v.custo, true)}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{reais(v.venda, true)}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">
+                    <LucroVenda v={v} />
+                  </td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{v.margem == null ? "—" : pctTexto(v.margem, 0)}</td>
+                  <td className="py-3 pr-5 pl-3 text-right whitespace-nowrap tabular-nums">{v.dias ?? "—"}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
+        </>
+      )}
+    </section>
+  );
+}
+
+// ---------- No pátio ----------
+
+const MAX_PATIO = 8;
+
+function Patio({ cartoes, empatado, className }: { cartoes: CartaoPatio[]; empatado: number; className: string }) {
+  const n = cartoes.length;
+  return (
+    <section aria-labelledby="titulo-patio" className={`min-w-0 ${className}`}>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 id="titulo-patio" className="titulo-secao">
+          No pátio
+          {n > 0 && (
+            <span className="font-semibold text-suave">
+              {" "}
+              · {n} {n === 1 ? "item" : "itens"} · {reaisInteiros(empatado)} empatados
+            </span>
+          )}
+        </h2>
+        <Link href="/estoque" prefetch className="link -my-3 inline-flex min-h-11 shrink-0 items-center text-sm">
+          Abrir estoque
+        </Link>
+      </div>
+      {n === 0 ? (
+        <p className="cartao text-sm text-suave">
+          Pátio vazio. Toque em{" "}
+          <Link href="/estoque/novo" className="link">
+            + Novo item
+          </Link>{" "}
+          para registrar uma compra.
+        </p>
+      ) : (
+        // Celular: carrossel que rola dentro dele mesmo. Do tablet em diante: grade.
+        <ul className="escalonado rolagem-fina -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:p-0 lg:grid-cols-4">
+          {cartoes.slice(0, MAX_PATIO).map((c) => (
+            <li key={c.id} className="w-46 shrink-0 snap-start md:w-auto">
+              <CartaoItem c={c} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CartaoItem({ c }: { c: CartaoPatio }) {
+  return (
+    <Link
+      href={`/estoque/${c.id}`}
+      className="cartao-link flex h-full flex-col overflow-hidden rounded-xl border border-borda bg-superficie shadow-(--sombra)"
+    >
+      <div className="relative h-28 shrink-0 border-b border-borda bg-superficie-2 md:h-32">
+        {c.capa ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={c.capa} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+        ) : (
+          <span className="flex size-full items-center justify-center font-display text-4xl font-bold text-suave/50" aria-hidden>
+            {c.nome.slice(0, 1).toUpperCase()}
+          </span>
         )}
-      </section>
-    </>
+        <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-1">
+          <SeloSituacao situacao={c.situacao} capital={c.capital} />
+          <SeloDias dias={c.dias} vendido={false} />
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col p-3">
+        <span className="truncate font-bold">{c.nome}</span>
+        <dl className="mt-1.5 space-y-0.5 text-[13px]">
+          <div className="flex justify-between gap-2">
+            <dt className="text-suave">{c.capital ? "Gastos" : "Custo"}</dt>
+            <dd className="tabular-nums">{reais(c.custo, true)}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-suave">Anúncio</dt>
+            <dd className={`tabular-nums ${c.preco == null ? "text-suave" : ""}`}>{c.preco == null ? "—" : reais(c.preco, true)}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            {c.capital ? (
+              <>
+                <dt className="sr-only">Lucro previsto</dt>
+                <dd className="font-semibold text-suave">Entra no caixa</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-suave">Lucro prev.</dt>
+                <dd
+                  className={`font-semibold tabular-nums ${
+                    c.lucroPrevisto == null ? "text-suave" : c.lucroPrevisto < 0 ? "text-ruim" : "text-bom"
+                  }`}
+                >
+                  {c.lucroPrevisto == null ? "—" : reais(c.lucroPrevisto, true)}
+                </dd>
+              </>
+            )}
+          </div>
+        </dl>
+      </div>
+    </Link>
   );
 }

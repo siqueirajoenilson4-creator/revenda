@@ -76,3 +76,14 @@ export function mesCurto(anoMes: string): string {
   const [y, m] = anoMes.split("-");
   return `${MESES[Number(m) - 1]}/${y.slice(2)}`;
 }
+
+/** Para buscas: sem acento, sem maiúscula ("Cambé" → "cambe"). */
+export function paraBusca(texto: string | null | undefined): string {
+  return (texto ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+}
+
+/** Junta uma lista em português: "a", "a e b", "a, b e c". */
+export function listaTexto(partes: string[]): string {
+  if (partes.length <= 1) return partes[0] ?? "";
+  return `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
+}

@@ -1,5 +1,5 @@
 import { exportarCSV, exportarJSON } from "@/lib/backup";
-import { itens, regras } from "@/lib/dados";
+import { contatos, itens, regras, respostas } from "@/lib/dados";
 import { hoje } from "@/lib/formato";
 
 export async function GET(request: Request) {
@@ -7,7 +7,17 @@ export async function GET(request: Request) {
   const [lista, r] = await Promise.all([itens("nenhuma"), regras()]);
   const dia = hoje();
 
-  const corpo = formato === "csv" ? exportarCSV(lista, dia) : exportarJSON(lista, r, new Date().toISOString());
+  let corpo: string;
+  if (formato === "csv") {
+    corpo = exportarCSV(lista, dia);
+  } else {
+    const [cts, resp] = await Promise.all([contatos(), respostas()]);
+    const nomes = new Map(lista.map((i) => [i.id, i.nome]));
+    corpo = exportarJSON(lista, r, new Date().toISOString(), {
+      contatos: cts.map((c) => ({ ...c, item: c.item_id ? (nomes.get(c.item_id) ?? null) : null })),
+      respostas: resp,
+    });
+  }
   return new Response(corpo, {
     headers: {
       "Content-Type": formato === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8",
