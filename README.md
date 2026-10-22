@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Revenda
 
-## Getting Started
+Ferramenta do negócio de compra e venda de usados (Londrina e região). Especificação completa em
+[especificacao-ferramenta-revenda.md](especificacao-ferramenta-revenda.md).
 
-First, run the development server:
+**Fase 1 (pronta):** login do dono, Calcular, Estoque, Gastos, Vendi, Caixa e giro, Regras, fotos dos itens,
+backup/importação em JSON e CSV, PWA (instala no celular).
+
+Next.js 16 + TypeScript + Tailwind · Supabase (banco, login e fotos) · Vercel (hospedagem). Tudo no plano grátis.
+
+## Configurar o Supabase (uma vez)
+
+O projeto Supabase é **compartilhado** com outro sistema. Tudo da revenda fica no schema `revenda`
+e no bucket `revenda-fotos`; nada do schema `public` nem de `auth` é alterado.
+
+1. **SQL Editor:** rode [supabase/migrations/0001_revenda_schema.sql](supabase/migrations/0001_revenda_schema.sql)
+   (só cria objetos dentro de `revenda`).
+2. **SQL Editor:** rode [supabase/migrations/0002_revenda_fotos.sql](supabase/migrations/0002_revenda_fotos.sql)
+   (cria o bucket privado `revenda-fotos` e uma política que só vale para ele).
+3. **Authentication → Users:** garanta que sua conta existe (pode ser a mesma do outro sistema).
+4. **SQL Editor:** rode [supabase/cadastrar-dono.sql](supabase/cadastrar-dono.sql) com o seu e-mail.
+   Só quem está em `revenda.donos` enxerga os dados; qualquer outra conta recebe "sem acesso".
+5. **Project Settings → Data API → Exposed schemas:** adicione `revenda` **mantendo** `public`
+   (e `graphql_public`, se estiver lá). Salve.
+6. **Project Settings → API Keys:** copie a **URL do projeto** e a **Publishable key** para o `.env.local`
+   (modelo em `.env.example`).
+
+No primeiro login o app cria as regras padrão e cadastra a **Honda CB300R** (capital próprio).
+
+## Rodar no computador
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm test         # testes das fórmulas (seção 5 da especificação)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Para abrir no celular na mesma rede Wi-Fi: `npm run dev -- -H 0.0.0.0` e acesse `http://IP-DO-PC:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Publicar na Vercel (grátis)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Suba o projeto para um repositório no GitHub.
+2. Em https://vercel.com, **Add New → Project**, importe o repositório (plano **Hobby**, grátis).
+3. Em **Environment Variables**, coloque `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+4. Deploy. No celular, abra o endereço `https://…vercel.app` e use **Adicionar à tela inicial**.
 
-## Learn More
+## Importar do Caderno de Revenda
 
-To learn more about Next.js, take a look at the following resources:
+Em **Regras → Importar itens**, envie um JSON assim (valores em reais, datas AAAA-MM-DD ou DD/MM/AAAA):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```json
+{
+  "itens": [
+    {
+      "nome": "Bicicleta Caloi aro 29",
+      "categoria": "Bicicleta",
+      "tipo": "revenda",
+      "compra_valor": 300,
+      "compra_data": "2026-10-01",
+      "compra_local": "Cambé",
+      "preco_alvo": 600,
+      "venda_valor": 550,
+      "venda_data": "2026-10-11",
+      "nota": "",
+      "gastos": [{ "descricao": "Pneu traseiro", "valor": 48.5, "data": "2026-10-02" }]
+    }
+  ]
+}
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Só `nome` é obrigatório. `tipo` é `revenda` ou `capital`; `situacao` (`comprado`, `anunciado`, `vendido`)
+é deduzida se faltar. A importação **adiciona** itens; não apaga nem substitui. Não importe a CB300R de novo,
+ela já é criada no primeiro acesso.
 
-## Deploy on Vercel
+O botão **Exportar JSON** gera esse mesmo formato (serve de backup e pode ser importado de volta).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Organização do código
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/calculo.ts`: todas as fórmulas (pague no máximo, veredito, limite do caixa, lucro, giro…), com testes.
+- `src/lib/formato.ts`: reais ↔ centavos, datas em `America/Sao_Paulo`.
+- `src/lib/dados.ts`: leitura do banco (só no servidor). `src/app/acoes.ts`: todas as gravações.
+- `src/app/(app)/…`: telas. `src/proxy.ts`: exige login em todas as páginas.
+- Dinheiro sempre em centavos (inteiros) no banco. Cada linha tem `user_id`; o RLS exige estar em `revenda.donos` e ser o dono da linha.
+- Fotos: bucket privado `revenda-fotos`, reduzidas no celular antes de enviar (máx. 1600 px).

@@ -1,26 +1,120 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --fundo: #f4f5f7;
+  --superficie: #ffffff;
+  --superficie-2: #f9fafb;
+  --texto: #111827;
+  --suave: #6b7280;
+  --borda: #e5e7eb;
+  --marca: #15803d;
+  --marca-forte: #166534;
+  --marca-texto: #ffffff;
+  --marca-fundo: #ecfdf3;
+  --lateral: #0f172a;
+  --lateral-texto: #94a3b8;
+  --lateral-ativo: #1e293b;
+  --bom: #15803d;
+  --bom-fundo: #dcfce7;
+  --atencao: #a16207;
+  --atencao-fundo: #fef3c7;
+  --ruim: #b91c1c;
+  --ruim-fundo: #fee2e2;
+  --info: #1d4ed8;
+  --info-fundo: #dbeafe;
+  --grafico: #16804a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --fundo: #0b0f14;
+    --superficie: #131a22;
+    --superficie-2: #18212b;
+    --texto: #e5e7eb;
+    --suave: #94a3b8;
+    --borda: #243041;
+    --marca: #22c55e;
+    --marca-forte: #4ade80;
+    --marca-texto: #052e16;
+    --marca-fundo: #0f2a1b;
+    --lateral: #080c11;
+    --lateral-texto: #8b98aa;
+    --lateral-ativo: #17202b;
+    --bom: #4ade80;
+    --bom-fundo: #133222;
+    --atencao: #fbbf24;
+    --atencao-fundo: #3a2c0b;
+    --ruim: #f87171;
+    --ruim-fundo: #3b1414;
+    --info: #93c5fd;
+    --info-fundo: #172554;
+    --grafico: #33a364;
   }
 }
 
+@theme inline {
+  --color-fundo: var(--fundo);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-texto: var(--texto);
+  --color-suave: var(--suave);
+  --color-borda: var(--borda);
+  --color-marca: var(--marca);
+  --color-marca-forte: var(--marca-forte);
+  --color-marca-texto: var(--marca-texto);
+  --color-marca-fundo: var(--marca-fundo);
+  --color-lateral: var(--lateral);
+  --color-lateral-texto: var(--lateral-texto);
+  --color-lateral-ativo: var(--lateral-ativo);
+  --color-bom: var(--bom);
+  --color-bom-fundo: var(--bom-fundo);
+  --color-atencao: var(--atencao);
+  --color-atencao-fundo: var(--atencao-fundo);
+  --color-ruim: var(--ruim);
+  --color-ruim-fundo: var(--ruim-fundo);
+  --color-info: var(--info);
+  --color-info-fundo: var(--info-fundo);
+  --color-grafico: var(--grafico);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+  overflow-x: hidden;
+}
+
+@layer components {
+  .cartao {
+    @apply rounded-xl border border-borda bg-superficie p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)];
+  }
+  .rotulo {
+    @apply mb-1 block text-[13px] font-medium text-suave;
+  }
+  .campo {
+    @apply w-full min-w-0 rounded-lg border border-borda bg-superficie px-3 py-2.5 text-base text-texto outline-none transition-colors placeholder:text-suave/60 focus:border-marca focus:ring-3 focus:ring-marca/15 md:py-2 md:text-sm;
+  }
+  .botao-principal {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-marca px-4 py-2 text-sm font-semibold text-marca-texto shadow-sm transition hover:bg-marca-forte active:scale-[0.98] disabled:opacity-50;
+  }
+  .botao-secundario {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-borda bg-superficie px-4 py-2 text-sm font-semibold text-texto shadow-sm transition hover:bg-superficie-2 active:scale-[0.98] disabled:opacity-50;
+  }
+  .botao-perigo {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-ruim px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50;
+  }
+  .botao-pequeno {
+    @apply inline-flex min-h-8 items-center justify-center gap-1 rounded-md border border-borda bg-superficie px-2.5 text-[13px] font-medium text-texto transition hover:bg-superficie-2 active:scale-[0.97];
+  }
+  .titulo-pagina {
+    @apply text-xl font-semibold tracking-tight md:text-2xl;
+  }
+  .esqueleto {
+    @apply animate-pulse rounded-lg bg-borda/70;
+  }
 }

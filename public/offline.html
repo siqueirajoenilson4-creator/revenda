@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sem internet · Revenda</title>
+<style>
+  :root { --fundo:#f5f5f0; --texto:#1c1f1a; --suave:#5f665b; --marca:#1f6f4a; }
+  @media (prefers-color-scheme: dark) { :root { --fundo:#121410; --texto:#e9ebe4; --suave:#a3aa9d; --marca:#4cb880; } }
+  body { margin:0; min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:16px;
+         background:var(--fundo); color:var(--texto); font-family:system-ui, sans-serif; text-align:center; }
+  img { width:72px; border-radius:16px; }
+  p { color:var(--suave); }
+  button { font:inherit; font-weight:600; padding:10px 18px; border:0; border-radius:12px; background:var(--marca); color:#fff; }
+</style>
+</head>
+<body>
+  <main>
+    <img src="/icons/icon-192.png" alt="">
+    <h1>Sem internet</h1>
+    <p>Os dados ficam no servidor. Assim que a conexão voltar, é só tentar de novo.</p>
+    <button onclick="location.reload()">Tentar de novo</button>
+  </main>
+</body>
+</html>
