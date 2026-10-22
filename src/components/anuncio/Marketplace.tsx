@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { Publicacao } from "@/lib/anuncios";
+import type { EstadoConservacao, Publicacao } from "@/lib/anuncios";
+import { categoriaMarketplace, condicaoMarketplace, type PedidoRobo } from "@/lib/robo";
 import { dataCurta } from "@/lib/visao";
 import { FOTO_MAIS, Icone } from "@/components/IconesItem";
 import { SeloPublicacao } from "@/components/Selos";
@@ -11,6 +12,7 @@ import { BotaoCopiar } from "./Copiar";
 import { FormPublicacao } from "./FormPublicacao";
 import { ABRIR_FORA, LAPIS } from "./icones";
 import { BotaoRenovei } from "./Renovei";
+import { BotaoRobo } from "./Robo";
 import { diaSP, linkCurto, precoParaColar, quandoRenovar, type FotoAnuncio } from "./util";
 
 const CRIAR_ANUNCIO = "https://www.facebook.com/marketplace/create/item";
@@ -98,6 +100,8 @@ export function Marketplace({
   titulo,
   descricao,
   preco,
+  estado,
+  categoria,
   fotos,
   item,
   hoje,
@@ -108,12 +112,36 @@ export function Marketplace({
   titulo: string;
   descricao: string;
   preco: string;
+  estado: EstadoConservacao | "";
+  categoria: string;
   fotos: FotoAnuncio[];
   item: { id: string; nome: string };
   hoje: string;
   alterado: boolean;
 }) {
   const noAr = pub?.situacao === "publicado";
+  const urls = fotos.flatMap((f) => (f.assinada ? [f.assinada] : []));
+  const motivoRobo = !anuncioId
+    ? "Salve o anúncio primeiro."
+    : alterado
+      ? "Salve as mudanças antes: o robô publica o anúncio salvo."
+      : !titulo.trim() || !precoParaColar(preco)
+        ? "Falta o título ou o preço."
+        : !urls.length
+          ? "O Marketplace pede pelo menos uma foto."
+          : undefined;
+  const pedido: PedidoRobo | null =
+    anuncioId && !motivoRobo
+      ? {
+          anuncioId,
+          titulo: titulo.trim(),
+          descricao: descricao.trim(),
+          preco: precoParaColar(preco),
+          condicao: condicaoMarketplace(estado),
+          categoria: categoriaMarketplace(categoria, item.nome),
+          fotos: urls,
+        }
+      : null;
   return (
     <section aria-labelledby="publicar-mkt" className="cartao md:p-5">
       <div className="flex items-start justify-between gap-3">
@@ -121,7 +149,7 @@ export function Marketplace({
           <h2 id="publicar-mkt" className="titulo-secao">
             Publicar no Facebook Marketplace
           </h2>
-          <p className="mt-0.5 text-[13px] text-suave">Manual: você publica no app; aqui fica o texto e o link.</p>
+          <p className="mt-0.5 text-[13px] text-suave">Com o robô (no computador) ou à mão: copie, publique no app e cole o link.</p>
         </div>
         {pub && <SeloPublicacao situacao={pub.situacao} />}
       </div>
@@ -151,6 +179,7 @@ export function Marketplace({
             <span className="truncate">Enviar fotos</span>
           </Link>
         )}
+        {!noAr && <BotaoRobo pedido={pedido} motivo={motivoRobo} className="botao-principal min-h-12 w-full md:min-h-11" />}
         <a href={CRIAR_ANUNCIO} target="_blank" rel="noopener noreferrer" className={`${GRANDE} col-span-2`}>
           <Icone className="size-[18px]">{ABRIR_FORA}</Icone>
           Abrir o Marketplace

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Robô da Revenda",
+  "description": "Publica no Facebook Marketplace os anúncios do sistema Revenda, no seu próprio Chrome.",
+  "version": "0.1.0",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.facebook.com/*",
+    "https://*.supabase.co/*",
+    "https://revenda-hazel.vercel.app/*",
+    "http://localhost:3000/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://revenda-hazel.vercel.app/*", "http://localhost:3000/*"],
+      "js": ["revenda.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.facebook.com/marketplace/*"],
+      "js": ["facebook.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

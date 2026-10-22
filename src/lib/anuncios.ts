@@ -1,6 +1,6 @@
 // Anúncios (Fase 2): texto do anúncio, situação por canal, lembrete de renovar
-// e histórico de preço. O Facebook é sempre manual (o dono copia e publica no
-// app); a ferramenta só monta o texto e guarda o link. Nada de robô.
+// e histórico de preço. No Facebook o dono publica à mão (copiar e colar) ou
+// pela extensão do robô (ver lib/robo.ts); a ferramenta guarda o texto e o link.
 
 import { listaTexto } from "./formato";
 import { somarDias } from "./periodo";

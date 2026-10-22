@@ -13,6 +13,10 @@ meta de lucro do mês, Caixa com extrato.
 baixar/compartilhar fotos, abrir o Marketplace, colar o link), situação por canal, lembrete de renovar a cada
 7 dias, histórico de preço, Interessados com respostas prontas e aviso de quem espera resposta há mais de 2 horas.
 
+**Robô do Marketplace:** extensão do Chrome em [extensao-robo/](extensao-robo/LEIA-ME.md) que publica o anúncio
+no Facebook do dono e devolve o link ao sistema (botão "Publicar com o robô" na tela do anúncio). Decisão do dono
+em 22/10/2026, ciente de que automatizar o Facebook vai contra os termos de uso.
+
 **Fase 3 e 4 (OLX):** dependem do cadastro de integrador aprovado pela OLX. Até lá a OLX funciona como canal
 manual (copiar o texto e colar o link).
 

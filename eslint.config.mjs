@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Extensão do Chrome: JavaScript puro, fora do Next.
+    "extensao-robo/**",
   ]),
 ]);
 
