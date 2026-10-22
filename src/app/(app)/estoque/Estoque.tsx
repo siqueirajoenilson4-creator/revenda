@@ -330,11 +330,11 @@ export function Estoque({
                     onClick={(e) => abrir(e, l.id)}
                     className="group/linha cursor-pointer [&>td]:border-b [&>td]:border-borda [&>td]:transition-colors [&>td]:duration-150 group-last/linha:[&>td]:border-0 hover:[&>td]:bg-superficie-2"
                   >
-                    <td className="max-w-0 py-2 pr-3 pl-4">
+                    <td className="w-full min-w-60 py-2 pr-3 pl-4">
                       <div className="flex items-center gap-3">
                         <Miniatura src={l.capa} nome={l.nome} tamanho="size-11" />
                         <div className="min-w-0">
-                          <Link href={`/estoque/${l.id}`} className="block leading-snug font-semibold break-words hover:underline">
+                          <Link href={`/estoque/${l.id}`} className="line-clamp-2 leading-snug font-semibold hover:underline" title={l.nome}>
                             {l.nome}
                           </Link>
                           {l.categoria && <div className="truncate text-[13px] text-suave">{l.categoria}</div>}
