@@ -10,6 +10,8 @@ import { lerImportacao } from "@/lib/backup";
 import { BUCKET_FOTOS } from "@/lib/supabase/config";
 import { ehCanal, ehEntregaVenda, ehPagamento } from "@/lib/vendas";
 import { ehCanalAnuncio, ehEntrega, ehEstado, ehSituacaoPublicacao, renovarEm } from "@/lib/anuncios";
+import { ehTipo, limparDetalhes } from "@/lib/detalhes";
+import { escreverTextoIA, type PedidoTextoIA } from "@/lib/ia-anuncio";
 import { ehSituacaoContato, lerDataHora } from "@/lib/interessados";
 
 export type Resultado = { erro?: string; ok?: string } | undefined;
@@ -22,6 +24,14 @@ const data = (f: FormData, k: string) => {
   const v = texto(f, k);
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
 };
+
+function lerJson(s: string | null): unknown {
+  try {
+    return s ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
+}
 
 function atualizarTudo() {
   revalidatePath("/", "layout");
@@ -395,6 +405,7 @@ export async function salvarAnuncio(_: Resultado, f: FormData): Promise<Resultad
   if (preco == null || preco <= 0) return { erro: "Qual o preço do anúncio?" };
   const estado = texto(f, "estado_conservacao");
   const entrega = texto(f, "entrega");
+  const tipo = texto(f, "tipo");
 
   const { data: it } = await supabase.from("itens").select("nome, categoria, situacao").eq("id", itemId).single();
   if (!it) return { erro: "Item não encontrado." };
@@ -411,12 +422,34 @@ export async function salvarAnuncio(_: Resultado, f: FormData): Promise<Resultad
       estado_conservacao: ehEstado(estado) ? estado : null,
       aceita_troca: f.get("aceita_troca") === "on",
       entrega: ehEntrega(entrega) ? entrega : null,
+      tipo: ehTipo(tipo) ? tipo : null,
+      detalhes: limparDetalhes(ehTipo(tipo) ? tipo : null, lerJson(texto(f, "detalhes"))),
     })
     .eq("item_id", itemId);
   if (error) return { erro: error.message };
   if (it.situacao !== "vendido") await supabase.from("itens").update({ preco_alvo: preco }).eq("id", itemId);
   atualizarTudo();
   return { ok: "Anúncio salvo." };
+}
+
+/** "Escrever com IA": título e descrição a partir da ficha. Não grava nada; ele revisa e salva. */
+export async function escreverAnuncioIA(p: PedidoTextoIA): Promise<{ titulo: string; descricao: string } | { erro: string }> {
+  await usuario();
+  const curto = (v: unknown, n = 300) => (typeof v === "string" ? v.slice(0, n) : "");
+  const tipo = ehTipo(p?.tipo) ? p.tipo : "";
+  return escreverTextoIA({
+    nome: curto(p?.nome, 200),
+    categoria: curto(p?.categoria, 100) || null,
+    tipo,
+    detalhes: limparDetalhes(tipo || null, p?.detalhes),
+    estado: ehEstado(p?.estado) ? p.estado : "",
+    pontoForte: curto(p?.pontoForte),
+    gastos: Array.isArray(p?.gastos) ? p.gastos.slice(0, 30).map((g) => curto(g, 120)).filter(Boolean) : [],
+    cidade: curto(p?.cidade, 100),
+    entrega: ehEntrega(p?.entrega) ? p.entrega : "",
+    aceitaTroca: p?.aceitaTroca === true,
+    preco: curto(p?.preco, 20),
+  });
 }
 
 /** Situação e link do anúncio num canal. Publicar marca a data e o dia de renovar. */

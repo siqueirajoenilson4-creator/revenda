@@ -12,7 +12,7 @@ const pausa = (min = 700, max = 1600) => esperar(min + Math.random() * (max - mi
 const norm = (t) =>
   (t ?? "")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s*[-–—]\s*/g, " - ")
     .replace(/\s+/g, " ")
     .trim()
@@ -32,12 +32,20 @@ function mostrar(texto, tom = "normal") {
     painel.innerHTML =
       '<div style="font-weight:700;margin-bottom:4px">Robô da Revenda</div><div data-texto></div>' +
       '<button data-parar style="margin-top:10px;padding:6px 12px;border-radius:8px;border:0;background:#f5a524;color:#141b23;font-weight:700;cursor:pointer">Parar o robô</button>';
-    painel.querySelector("[data-parar]").onclick = async () => {
+    // O Facebook segura cliques no documento: o botão age já no pointerdown, na captura, e não deixa o evento seguir.
+    const parar = painel.querySelector("[data-parar]");
+    const aoParar = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (parado) return;
       parado = true;
-      await pedir({ tipo: "cancelar" });
+      parar.remove();
+      pedir({ tipo: "cancelar" });
       mostrar("Robô parado. Pode continuar à mão.", "erro");
     };
-    document.body.appendChild(painel);
+    for (const ev of ["pointerdown", "mousedown", "click"]) parar.addEventListener(ev, aoParar, true);
+    painel.addEventListener("pointerdown", (e) => e.stopPropagation(), true);
+    document.documentElement.appendChild(painel);
   }
   const el = painel.querySelector("[data-texto]");
   el.textContent = texto;
@@ -265,6 +273,7 @@ async function publicar() {
 async function aguardarPublicacao(ms) {
   const fim = Date.now() + ms;
   while (Date.now() < fim) {
+    if (parado) return false;
     if (!location.pathname.startsWith("/marketplace/create")) return true;
     await esperar(1000);
   }
@@ -300,6 +309,7 @@ async function rodar() {
         if (e instanceof Parou) return;
         andamento(`${e.message} Quando publicar, eu pego o link sozinho.`, true);
       }
+      if (parado) return;
       await pedir({ tipo: "fase", fase: "link" });
       if (!(await aguardarPublicacao(30 * 60 * 1000))) return;
       andamento("Publicado! Indo buscar o link…");

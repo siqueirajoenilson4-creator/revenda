@@ -7,6 +7,7 @@ import { hoje } from "./formato";
 import { BUCKET_FOTOS } from "@/lib/supabase/config";
 import type { Venda } from "./vendas";
 import { CANAIS_ANUNCIO, type Anuncio } from "./anuncios";
+import { ehTipo } from "./detalhes";
 import { RESPOSTAS_PADRAO, type Contato, type Resposta } from "./interessados";
 import { numerosMenu, type NumerosMenu } from "./caixa";
 
@@ -127,6 +128,8 @@ function paraAnuncio(bruto: unknown): Anuncio | null {
   return {
     ...a,
     preco: dinheiro(a.preco),
+    tipo: ehTipo(a.tipo) ? a.tipo : null,
+    detalhes: a.detalhes && typeof a.detalhes === "object" ? a.detalhes : {},
     publicacoes: (a.publicacoes ?? []).sort((x, y) => ORDEM_CANAL.indexOf(x.canal) - ORDEM_CANAL.indexOf(y.canal)),
     precos: (a.precos ?? [])
       .map((p) => ({ ...p, preco: Number(p.preco) }))

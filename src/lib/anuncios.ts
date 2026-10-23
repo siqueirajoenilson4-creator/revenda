@@ -2,6 +2,7 @@
 // e histórico de preço. No Facebook o dono publica à mão (copiar e colar) ou
 // pela extensão do robô (ver lib/robo.ts); a ferramenta guarda o texto e o link.
 
+import type { Detalhes, TipoProduto } from "./detalhes";
 import { listaTexto } from "./formato";
 import { somarDias } from "./periodo";
 
@@ -74,6 +75,9 @@ export type Anuncio = {
   estado_conservacao: EstadoConservacao | null;
   aceita_troca: boolean;
   entrega: Entrega | null;
+  /** Tipo de produto e ficha (lib/detalhes.ts). */
+  tipo: TipoProduto | null;
+  detalhes: Detalhes;
   criado_em: string;
   atualizado_em: string;
   publicacoes: Publicacao[];
@@ -95,6 +99,8 @@ export type DadosTexto = {
   cidade?: string | null;
   entrega?: Entrega | null;
   aceitaTroca?: boolean;
+  /** Ficha do produto em linhas "Rótulo: valor" (fichaTexto). */
+  ficha?: string[];
 };
 
 const ESTADO_FRASE: Record<EstadoConservacao, string> = {
@@ -151,6 +157,7 @@ export function gerarAnuncio(d: DadosTexto): { titulo: string; descricao: string
       ponto ? frase(ponto) : null,
       trato.length ? `O que foi feito: ${listaTexto(trato)}.` : null,
     ].filter(Boolean).join("\n"),
+    (d.ficha ?? []).join("\n"),
     [entrega, d.aceitaTroca ? "Aceito troca." : "Não aceito troca.", "Pix ou dinheiro."].filter(Boolean).join("\n"),
   ].filter(Boolean);
 

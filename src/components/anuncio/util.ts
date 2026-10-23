@@ -1,4 +1,5 @@
 import type { Anuncio, Entrega, EstadoConservacao } from "@/lib/anuncios";
+import { adivinharTipo, type Detalhes, type TipoProduto } from "@/lib/detalhes";
 import { hoje as diaDe, lerReais, paraBusca, paraCampo } from "@/lib/formato";
 import { dataCurta } from "@/lib/visao";
 
@@ -23,6 +24,8 @@ export type CamposAnuncio = {
   estado: EstadoConservacao | "";
   entrega: Entrega | "";
   aceitaTroca: boolean;
+  tipo: TipoProduto | "";
+  detalhes: Detalhes;
 };
 
 /** Valores do anúncio salvo; sem anúncio, começa com o preço e a categoria do item. */
@@ -37,6 +40,8 @@ export function camposDe(a: Anuncio | null, i: ItemAnuncio): CamposAnuncio {
       estado: "",
       entrega: "",
       aceitaTroca: false,
+      tipo: adivinharTipo(i.nome, i.categoria),
+      detalhes: {},
     };
   return {
     titulo: a.titulo ?? "",
@@ -47,6 +52,8 @@ export function camposDe(a: Anuncio | null, i: ItemAnuncio): CamposAnuncio {
     estado: a.estado_conservacao ?? "",
     entrega: a.entrega ?? "",
     aceitaTroca: !!a.aceita_troca,
+    tipo: a.tipo ?? adivinharTipo(i.nome, i.categoria),
+    detalhes: a.detalhes ?? {},
   };
 }
 
@@ -62,6 +69,8 @@ export function mesmoTexto(a: CamposAnuncio, b: CamposAnuncio): boolean {
       c.estado,
       c.entrega,
       c.aceitaTroca,
+      c.tipo,
+      Object.entries(c.detalhes).filter(([, v]) => v.trim()).sort(([a], [b]) => a.localeCompare(b)),
     ]);
   return norm(a) === norm(b);
 }

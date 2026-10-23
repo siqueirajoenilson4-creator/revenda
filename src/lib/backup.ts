@@ -1,6 +1,7 @@
 // Formato de backup/importação. No arquivo, dinheiro vai em REAIS (ex.: 1234.5);
 // no banco, em centavos. Datas em AAAA-MM-DD.
 
+import { ehTipo, limparDetalhes, type Detalhes, type TipoProduto } from "./detalhes";
 import { custoItem, diasParado, lucroItem, REGRAS_PADRAO, type Regras } from "./calculo";
 import { lerReais } from "./formato";
 import { ehCanal, ehEntregaVenda, ehPagamento, rotuloCanal, rotuloPagamento, type Venda } from "./vendas";
@@ -25,6 +26,8 @@ export type AnuncioBackup = Pick<
   Anuncio,
   "titulo" | "descricao" | "preco" | "categoria" | "cidade" | "estado_conservacao" | "aceita_troca" | "entrega"
 > & {
+  tipo?: TipoProduto | null;
+  detalhes?: Detalhes;
   publicacoes: Pick<Publicacao, "canal" | "situacao" | "link" | "publicado_em" | "renovar_em">[];
   precos: { preco: number; data: string }[];
 };
@@ -70,6 +73,7 @@ function anuncioArquivo(a: AnuncioBackup): AnuncioBackup {
     estado_conservacao: a.estado_conservacao,
     aceita_troca: a.aceita_troca,
     entrega: a.entrega,
+    ...(a.tipo ? { tipo: a.tipo, detalhes: a.detalhes ?? {} } : {}),
     publicacoes: a.publicacoes.map(({ canal, situacao, link, publicado_em, renovar_em }) => ({
       canal, situacao, link, publicado_em, renovar_em,
     })),
@@ -203,6 +207,7 @@ function lerAnuncio(v: unknown, onde: string): AnuncioBackup | null {
     estado_conservacao: opcao(o.estado_conservacao, ehEstado),
     aceita_troca: o.aceita_troca === true,
     entrega: opcao(o.entrega, ehEntrega),
+    ...(ehTipo(o.tipo) ? { tipo: o.tipo, detalhes: limparDetalhes(o.tipo, o.detalhes) } : {}),
     publicacoes: lista(o.publicacoes).flatMap((p) => {
       if (!ehCanalAnuncio(p.canal)) return [];
       return [{

@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useId, useState, useTransition } from "react";
-import { salvarAnuncio } from "@/app/acoes";
+import { escreverAnuncioIA, salvarAnuncio } from "@/app/acoes";
+import { fichaTexto } from "@/lib/detalhes";
+import { Ficha } from "./Ficha";
 import { ENTREGAS, ESTADOS, gerarAnuncio, LIMITE_TITULO, type Entrega, type EstadoConservacao } from "@/lib/anuncios";
 import { Campo, CampoReais, Mensagem } from "@/components/Campos";
 import type { CamposAnuncio, ItemAnuncio } from "./util";
@@ -69,8 +71,11 @@ export function TextoAnuncio({
   const [estado, acao, salvando] = useActionState(salvarAnuncio, undefined);
   const [, iniciar] = useTransition();
   const [ponto, setPonto] = useState("");
-  const [confirmar, setConfirmar] = useState(false);
-  const [gerado, setGerado] = useState(false);
+  // Qual geração espera a confirmação de substituir o texto que ele já escreveu.
+  const [confirmar, setConfirmar] = useState<null | "modelo" | "ia">(null);
+  const [gerado, setGerado] = useState<null | "modelo" | "ia">(null);
+  const [ia, setIa] = useState<{ carregando?: boolean; erro?: string }>({});
+  const [, iniciarIa] = useTransition();
   const idTitulo = useId();
   const idDescricao = useId();
 
@@ -87,10 +92,47 @@ export function TextoAnuncio({
       cidade: campos.cidade,
       entrega: campos.entrega || null,
       aceitaTroca: campos.aceitaTroca,
+      ficha: fichaTexto(campos.tipo || null, campos.detalhes),
     });
     mudar(g);
-    setConfirmar(false);
-    setGerado(true);
+    setConfirmar(null);
+    setGerado("modelo");
+    focarTitulo();
+  }
+
+  function escreverComIa() {
+    setConfirmar(null);
+    setGerado(null);
+    setIa({ carregando: true });
+    iniciarIa(async () => {
+      const r = await escreverAnuncioIA({
+        nome: item.nome,
+        categoria: campos.categoria || item.categoria,
+        tipo: campos.tipo,
+        detalhes: campos.detalhes,
+        estado: campos.estado,
+        pontoForte: ponto,
+        gastos: item.gastos,
+        cidade: campos.cidade,
+        entrega: campos.entrega,
+        aceitaTroca: campos.aceitaTroca,
+        preco: campos.preco,
+      });
+      if ("erro" in r) {
+        setIa({ erro: r.erro });
+        return;
+      }
+      setIa({});
+      mudar(r);
+      setGerado("ia");
+      focarTitulo();
+    });
+  }
+
+  /** Gera direto ou, se já tem texto dele, pergunta antes de trocar. */
+  const pedir = (qual: "modelo" | "ia") => (temTexto ? setConfirmar(qual) : qual === "ia" ? escreverComIa() : aplicar());
+
+  function focarTitulo() {
     const campo = document.getElementById(idTitulo);
     campo?.focus({ preventScroll: true });
     campo?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -115,6 +157,8 @@ export function TextoAnuncio({
         }}
       >
         <input type="hidden" name="item_id" value={item.id} />
+        <input type="hidden" name="tipo" value={campos.tipo} />
+        <input type="hidden" name="detalhes" value={JSON.stringify(campos.detalhes)} />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <CampoReais rotulo="Preço" name="preco" value={campos.preco} onChange={(e) => mudar({ preco: e.target.value })} required />
@@ -159,10 +203,13 @@ export function TextoAnuncio({
           </label>
         </div>
 
+        <Ficha tipo={campos.tipo} detalhes={campos.detalhes} mudar={mudar} />
+
         <div className="rounded-lg border border-borda bg-superficie-2 p-3 md:p-4">
           <h3 className="sobrescrito">Gerar texto</h3>
           <p className="mt-0.5 mb-3 text-[13px] text-suave">
-            Usa o estado, o ponto forte, o que foi feito no item{item.gastos.length ? ` (${item.gastos.length} gastos lançados)` : ""} e a entrega.
+            Usa a ficha acima, o estado, o ponto forte, o que foi feito no item
+            {item.gastos.length ? ` (${item.gastos.length} gastos lançados)` : ""} e a entrega.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <Campo
@@ -175,23 +222,33 @@ export function TextoAnuncio({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  if (temTexto) setConfirmar(true);
-                  else aplicar();
+                  pedir("ia");
                 }
               }}
             />
-            <button
-              type="button"
-              className="botao-secundario shrink-0"
-              onClick={() => (temTexto ? setConfirmar(true) : aplicar())}
-            >
-              Gerar título e descrição
+          </div>
+          <div className="mt-2 grid gap-2 sm:flex">
+            <button type="button" className="botao-principal" disabled={ia.carregando} onClick={() => pedir("ia")}>
+              {ia.carregando ? "A IA está escrevendo…" : "Escrever com IA"}
+            </button>
+            <button type="button" className="botao-secundario" disabled={ia.carregando} onClick={() => pedir("modelo")}>
+              Gerar pelo modelo
             </button>
           </div>
-          {confirmar && <Substituir aoConfirmar={aplicar} aoCancelar={() => setConfirmar(false)} />}
-          {gerado && !confirmar && (
+          {confirmar && (
+            <Substituir
+              aoConfirmar={confirmar === "ia" ? escreverComIa : aplicar}
+              aoCancelar={() => setConfirmar(null)}
+            />
+          )}
+          {ia.erro && (
+            <p role="alert" className="aparece mt-2 text-[13px] font-semibold text-ruim">
+              {ia.erro}
+            </p>
+          )}
+          {gerado && !confirmar && !ia.erro && (
             <p role="status" className="aparece mt-2 text-[13px] font-semibold text-bom">
-              Texto gerado. Revise o título e a descrição e salve.
+              {gerado === "ia" ? "A IA escreveu o texto." : "Texto gerado."} Revise o título e a descrição e salve.
             </p>
           )}
         </div>
