@@ -13,6 +13,7 @@ const norm = (t) =>
   (t ?? "")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
+    .replace(/\s*[-–—]\s*/g, " - ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -135,19 +136,28 @@ async function digitar(el, valor) {
   el.blur?.();
 }
 
+// O Facebook muda o texto das opções de condição de tempos em tempos: aceita os nomes antigos e os novos.
+const CONDICOES = [
+  ["novo"],
+  ["usado - estado de novo", "usado - como novo"],
+  ["usado - em boas condicoes", "usado - em bom estado"],
+  ["usado - em condicoes razoaveis", "usado - em estado razoavel"],
+];
+const parecidos = (opcao) => CONDICOES.find((g) => g.includes(norm(opcao))) ?? [norm(opcao)];
+
 async function escolher(rotulo, opcao) {
   const c = campo(rotulo);
   if (!c) return false;
   c.scrollIntoView({ block: "center", behavior: "smooth" });
   await pausa(300, 700);
   if (c.getAttribute("aria-expanded") !== "true") c.click();
-  const alvo = norm(opcao);
+  const alvos = parecidos(opcao);
   const acharOpcao = () => {
     const ops = [...document.querySelectorAll('[role="option"], [role="menuitemradio"], [role="menuitem"], [role="radio"]')].filter(visivel);
-    const op = ops.find((o) => norm(o.textContent) === alvo) ?? ops.find((o) => norm(o.textContent).startsWith(alvo));
+    const op = ops.find((o) => alvos.includes(norm(o.textContent))) ?? ops.find((o) => alvos.some((a) => norm(o.textContent).startsWith(a)));
     if (op) return op;
     // Sem papel de opção: o texto exato, fora do próprio campo, e o pai clicável dele.
-    const span = [...document.querySelectorAll("span")].find((e) => visivel(e) && !c.contains(e) && norm(e.textContent) === alvo);
+    const span = [...document.querySelectorAll("span")].find((e) => visivel(e) && !c.contains(e) && alvos.includes(norm(e.textContent)));
     return span?.closest('[role="button"], [tabindex], [role="option"]') ?? span ?? null;
   };
   let item = await aguardar(acharOpcao, 4000);

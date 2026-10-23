@@ -16,7 +16,7 @@ describe("categoriaMarketplace", () => {
 
 describe("condicaoMarketplace", () => {
   it("usa o texto do Marketplace", () => {
-    expect(condicaoMarketplace("bom")).toBe("Usado - Em bom estado");
+    expect(condicaoMarketplace("bom")).toBe("Usado — em boas condições");
     expect(condicaoMarketplace("")).toBeNull();
   });
 });

@@ -5,12 +5,12 @@
 import { listaTexto } from "./formato";
 import { somarDias } from "./periodo";
 
-/** As mesmas opções do Marketplace, para copiar sem traduzir. */
+/** As mesmas opções do Marketplace (textos de out/2026), para copiar sem traduzir. */
 export const ESTADOS = [
   { id: "novo", rotulo: "Novo" },
-  { id: "como_novo", rotulo: "Usado - Como novo" },
-  { id: "bom", rotulo: "Usado - Em bom estado" },
-  { id: "razoavel", rotulo: "Usado - Em estado razoável" },
+  { id: "como_novo", rotulo: "Usado — estado de novo" },
+  { id: "bom", rotulo: "Usado — em boas condições" },
+  { id: "razoavel", rotulo: "Usado — em condições razoáveis" },
 ] as const;
 export type EstadoConservacao = (typeof ESTADOS)[number]["id"];
 

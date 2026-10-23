@@ -18,7 +18,7 @@ export type PedidoRobo = {
   descricao: string;
   /** Só o número em reais, como o campo do Marketplace pede ("1800"). */
   preco: string;
-  /** Como aparece no Marketplace ("Usado - Em bom estado"). */
+  /** Como aparece no Marketplace ("Usado — em boas condições"). */
   condicao: string | null;
   /** Categoria do Marketplace mais próxima da categoria do item. */
   categoria: string;
