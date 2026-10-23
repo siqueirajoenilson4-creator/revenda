@@ -88,12 +88,25 @@ function campo(...rotulos) {
   return null;
 }
 
-function botao(...textos) {
-  const alvos = textos.map(norm);
+/** Botão pelo nome. `comeco`: aceita texto que começa assim ("Mais detalhes Atraia mais..."). */
+function botao(textos, comeco = false) {
+  const alvos = [].concat(textos).map(norm);
+  const casa = (t) => alvos.some((a) => t === a || (comeco && t.startsWith(a)));
   return [...document.querySelectorAll('[role="button"], button')].find((b) => {
     if (!visivel(b) || b.getAttribute("aria-disabled") === "true" || b.disabled) return false;
-    return alvos.includes(norm(b.getAttribute("aria-label"))) || alvos.includes(norm(b.textContent));
+    return casa(norm(b.getAttribute("aria-label"))) || casa(norm(b.textContent));
   });
+}
+
+/** Clique de gente: o Facebook abre algumas listas no pointerdown, não no click. */
+function clicar(el) {
+  const r = el.getBoundingClientRect();
+  const o = { bubbles: true, cancelable: true, view: window, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 };
+  el.dispatchEvent(new PointerEvent("pointerdown", o));
+  el.dispatchEvent(new MouseEvent("mousedown", o));
+  el.dispatchEvent(new PointerEvent("pointerup", o));
+  el.dispatchEvent(new MouseEvent("mouseup", o));
+  el.click();
 }
 
 // ---------- Ações ----------
@@ -127,18 +140,28 @@ async function escolher(rotulo, opcao) {
   if (!c) return false;
   c.scrollIntoView({ block: "center", behavior: "smooth" });
   await pausa(300, 700);
-  c.click();
+  if (c.getAttribute("aria-expanded") !== "true") c.click();
   const alvo = norm(opcao);
-  const item = await aguardar(() => {
+  const acharOpcao = () => {
     const ops = [...document.querySelectorAll('[role="option"], [role="menuitemradio"], [role="menuitem"], [role="radio"]')].filter(visivel);
-    return ops.find((o) => norm(o.textContent) === alvo) ?? ops.find((o) => norm(o.textContent).startsWith(alvo));
-  }, 6000);
+    const op = ops.find((o) => norm(o.textContent) === alvo) ?? ops.find((o) => norm(o.textContent).startsWith(alvo));
+    if (op) return op;
+    // Sem papel de opção: o texto exato, fora do próprio campo, e o pai clicável dele.
+    const span = [...document.querySelectorAll("span")].find((e) => visivel(e) && !c.contains(e) && norm(e.textContent) === alvo);
+    return span?.closest('[role="button"], [tabindex], [role="option"]') ?? span ?? null;
+  };
+  let item = await aguardar(acharOpcao, 4000);
+  if (!item) {
+    clicar(c); // segunda tentativa, com clique completo
+    item = await aguardar(acharOpcao, 5000);
+  }
   if (!item) {
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     return false;
   }
   await pausa(300, 800);
-  item.click();
+  clicar(item);
+  await pausa(400, 900);
   return true;
 }
 
@@ -199,7 +222,7 @@ async function preencher(pedido) {
     let desc = campo("Descrição");
     if (!desc) {
       // Às vezes fica dentro de "Mais detalhes".
-      const mais = botao("Mais detalhes");
+      const mais = botao("Mais detalhes", true);
       if (mais) {
         mais.click();
         await pausa();
@@ -216,7 +239,7 @@ async function preencher(pedido) {
 async function publicar() {
   // Uma ou duas telas: "Avançar" (grupos e entrega) e depois "Publicar".
   for (let passo = 0; passo < 3; passo++) {
-    const b = await aguardar(() => botao("Publicar", "Avançar", "Próximo"), 20000);
+    const b = await aguardar(() => botao(["Publicar", "Avançar", "Próximo"]), 20000);
     if (!b) throw new Error("O botão Publicar não liberou. Confira os campos em vermelho e publique à mão.");
     const ehPublicar = norm(b.textContent) === "publicar" || norm(b.getAttribute("aria-label")) === "publicar";
     andamento(ehPublicar ? "Publicando…" : "Avançando…");

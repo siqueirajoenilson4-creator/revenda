@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Robô da Revenda",
   "description": "Publica no Facebook Marketplace os anúncios do sistema Revenda, no seu próprio Chrome.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "permissions": [
     "storage"
   ],
