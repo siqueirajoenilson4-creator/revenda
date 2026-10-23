@@ -47,10 +47,16 @@ export function BotaoRobo({ pedido, motivo, className }: { pedido: PedidoRobo | 
 
   if (!versao) {
     return (
-      <p className="col-span-2 rounded-lg bg-superficie-2 px-3 py-2.5 text-[13px] text-suave">
-        <strong className="font-semibold text-texto">Robô do Marketplace:</strong> instale a extensão no Chrome do computador
-        (pasta <code>extensao-robo</code>, veja o LEIA-ME) para publicar com um toque.
-      </p>
+      <div className="col-span-2 space-y-2 rounded-lg bg-superficie-2 p-3">
+        <p className="text-[13px] text-suave">
+          <strong className="font-semibold text-texto">Robô do Marketplace:</strong> no computador, baixe e abra o instalador.
+          Ele põe a extensão no Chrome sozinho; depois recarregue esta página.
+        </p>
+        <a href="/Instalar-Robo-Revenda.exe" download className="botao-secundario w-full">
+          <Icone className="size-[18px]">{ROBO}</Icone>
+          Baixar o instalador do robô
+        </a>
+      </div>
     );
   }
 

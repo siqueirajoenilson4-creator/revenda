@@ -5,12 +5,13 @@ Não guarda senha e não manda nada para servidor de fora.
 
 ## Instalar (uma vez, no computador)
 
-1. No Chrome, abra `chrome://extensions`.
-2. Ligue **Modo do desenvolvedor** (canto superior direito).
-3. Clique em **Carregar sem compactação** e escolha esta pasta (`extensao-robo`).
-4. Recarregue a página do sistema (F5).
+No sistema, abra um anúncio e toque em **Baixar o instalador do robô** (ou rode `public/Instalar-Robo-Revenda.exe`).
+O instalador copia a extensão para `%LOCALAPPDATA%\Robo-Revenda\extensao`, abre o Chrome e faz sozinho os cliques
+de "Modo do desenvolvedor" e "Carregar sem compactação". Se algum clique falhar, ele mostra o passo para fazer à mão.
+Abrir o instalador de novo atualiza a extensão para a versão nova.
 
-Quando o código da extensão mudar, volte em `chrome://extensions` e clique no botão de recarregar do Robô.
+Para gerar o instalador depois de mudar a extensão (suba a `version` do manifest.json):
+`powershell -ExecutionPolicy Bypass -File instalador-robo\gerar-instalador.ps1` e publique o site.
 
 ## Usar
 
